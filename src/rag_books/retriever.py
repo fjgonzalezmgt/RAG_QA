@@ -6,6 +6,7 @@ raw database rows with citation labels that the LLM can reference.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 
 from loguru import logger
@@ -75,6 +76,7 @@ class RAGRetriever:
         top_k: int,
         candidate_k: int | None = None,
         max_chunks_per_document: int = 2,
+        filters: Mapping[str, object] | None = None,
     ) -> list[RetrievedContext]:
         """Retrieve and label context chunks.
 
@@ -90,6 +92,8 @@ class RAGRetriever:
             Optional larger candidate pool used for document diversification.
         max_chunks_per_document
             Maximum chunks selected per document before fallback fill.
+        filters
+            Optional metadata filters for quality/operations dimensions.
 
         Returns
         -------
@@ -113,9 +117,15 @@ class RAGRetriever:
                 top_k=top_k,
                 candidate_k=candidate_k,
                 max_chunks_per_document=max_chunks_per_document,
+                filters=filters,
             )
         else:
-            results = self.store.search(domain=domain, query_embedding=query_embedding, top_k=top_k)
+            results = self.store.search(
+                domain=domain,
+                query_embedding=query_embedding,
+                top_k=top_k,
+                filters=filters,
+            )
         contexts = [
             RetrievedContext(source_id=f"S{index}", result=result)
             for index, result in enumerate(results, start=1)

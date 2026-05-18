@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import math
 import re
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from uuid import uuid4
 
@@ -25,6 +25,15 @@ from .text_splitter import TextChunk
 
 
 IDENTIFIER_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+
+QUALITY_FILTER_ALIASES: dict[str, tuple[str, ...]] = {
+    "plant": ("plant", "plant_code", "site", "site_code"),
+    "process": ("process", "process_code", "area", "qms_process"),
+    "product": ("product", "product_code", "sku", "material"),
+    "customer": ("customer", "customer_code", "account"),
+    "document_type": ("document_type", "document_type_code", "doc_type", "type"),
+    "audit": ("audit", "audit_id", "audit_code"),
+}
 
 
 @dataclass(frozen=True)
@@ -383,7 +392,13 @@ class VectorStore:
         logger.success("Upserted {} chunks for document '{}'.", inserted, document_id)
         return inserted
 
-    def search(self, domain: str, query_embedding: Sequence[float], top_k: int) -> list[SearchResult]:
+    def search(
+        self,
+        domain: str,
+        query_embedding: Sequence[float],
+        top_k: int,
+        filters: Mapping[str, object] | None = None,
+    ) -> list[SearchResult]:
         """Run a nearest-neighbor vector search.
 
         Parameters
@@ -394,6 +409,10 @@ class VectorStore:
             Query embedding vector.
         top_k
             Number of nearest chunks to return.
+        filters
+            Optional operational filters. Values are matched against document
+            and chunk metadata keys such as plant, process, product, customer,
+            document_type, audit, date_from, and date_to.
 
         Returns
         -------
@@ -401,11 +420,18 @@ class VectorStore:
             Search results ordered by vector distance.
         """
 
-        logger.info("Running vector search. schema='{}', domain='{}', top_k={}.", self.schema, domain, top_k)
+        logger.info(
+            "Running vector search. schema='{}', domain='{}', top_k={}, filters={}.",
+            self.schema,
+            domain,
+            top_k,
+            sorted((filters or {}).keys()),
+        )
         chunks = qname(self.schema, "chunks")
         documents = qname(self.schema, "documents")
         vector_type = qname(self.extensions_schema, "vector")
         query_vector = vector_literal(query_embedding)
+        where_sql, where_params = build_filter_clause(domain, filters)
 
         with self.connect() as conn:
             with conn.cursor() as cur:
@@ -424,15 +450,15 @@ class VectorStore:
                         c.page_start,
                         c.page_end,
                         c.content,
-                        c.metadata,
+                        COALESCE(d.metadata, '{{}}'::jsonb) || COALESCE(c.metadata, '{{}}'::jsonb) AS metadata,
                         1 - (c.embedding <=> %s::{vector_type}) AS score
                     FROM {chunks} c
                     JOIN {documents} d ON d.id = c.document_id
-                    WHERE c.domain = %s AND c.embedding IS NOT NULL
+                    WHERE {where_sql}
                     ORDER BY c.embedding <=> %s::{vector_type}
                     LIMIT %s
                     """,
-                    (query_vector, domain, query_vector, top_k),
+                    (query_vector, *where_params, query_vector, top_k),
                 )
                 rows = cur.fetchall()
 
@@ -461,6 +487,7 @@ class VectorStore:
         top_k: int,
         candidate_k: int,
         max_chunks_per_document: int,
+        filters: Mapping[str, object] | None = None,
     ) -> list[SearchResult]:
         """Run vector search and diversify selected chunks by document.
 
@@ -476,6 +503,8 @@ class VectorStore:
             Number of nearest-neighbor candidates considered before filtering.
         max_chunks_per_document
             Maximum selected chunks per source document before fallback fill.
+        filters
+            Optional operational filters passed to vector search.
 
         Returns
         -------
@@ -493,7 +522,12 @@ class VectorStore:
             candidate_k,
             max_chunks_per_document,
         )
-        candidates = self.search(domain=domain, query_embedding=query_embedding, top_k=candidate_k)
+        candidates = self.search(
+            domain=domain,
+            query_embedding=query_embedding,
+            top_k=candidate_k,
+            filters=filters,
+        )
         selected: list[SearchResult] = []
         counts_by_document: dict[str, int] = {}
 
@@ -841,3 +875,76 @@ def vector_literal(values: Sequence[float]) -> str:
             raise ValueError("Vector contains non-finite values")
         cleaned.append(repr(number))
     return "[" + ",".join(cleaned) + "]"
+
+
+def build_filter_clause(domain: str, filters: Mapping[str, object] | None = None) -> tuple[str, list[object]]:
+    """Build a SQL WHERE clause for quality/operations metadata filters."""
+
+    clauses = ["c.domain = %s", "c.embedding IS NOT NULL"]
+    params: list[object] = [domain]
+
+    for logical_key, aliases in QUALITY_FILTER_ALIASES.items():
+        value = normalize_filter_value((filters or {}).get(logical_key))
+        if not value:
+            continue
+        pattern = f"%{value}%"
+        alias_clauses: list[str] = []
+        for alias in aliases:
+            alias_clauses.append(
+                """
+                COALESCE(
+                    NULLIF(d.metadata ->> %s, ''),
+                    NULLIF(c.metadata ->> %s, ''),
+                    NULLIF(to_jsonb(d) ->> %s, ''),
+                    NULLIF(to_jsonb(c) ->> %s, ''),
+                    ''
+                ) ILIKE %s
+                """
+            )
+            params.extend([alias, alias, alias, alias, pattern])
+        clauses.append("(" + " OR ".join(alias_clauses) + ")")
+
+    date_from = normalize_filter_value((filters or {}).get("date_from"))
+    date_to = normalize_filter_value((filters or {}).get("date_to"))
+    if date_from:
+        clauses.append(f"{quality_date_expression()} >= %s::date")
+        params.append(date_from)
+    if date_to:
+        clauses.append(f"{quality_date_expression()} <= %s::date")
+        params.append(date_to)
+
+    return " AND ".join(clauses), params
+
+
+def quality_date_expression() -> str:
+    """Return a safe SQL expression for document/effective dates."""
+
+    raw_date = """
+        COALESCE(
+            NULLIF(d.metadata ->> 'document_date', ''),
+            NULLIF(d.metadata ->> 'effective_date', ''),
+            NULLIF(c.metadata ->> 'document_date', ''),
+            NULLIF(c.metadata ->> 'effective_date', ''),
+            NULLIF(to_jsonb(d) ->> 'document_date', ''),
+            NULLIF(to_jsonb(d) ->> 'effective_date', ''),
+            NULLIF(to_jsonb(c) ->> 'document_date', ''),
+            NULLIF(to_jsonb(c) ->> 'effective_date', '')
+        )
+    """
+    return f"""
+        CASE
+            WHEN ({raw_date}) ~ '^\\d{{4}}-\\d{{2}}-\\d{{2}}$'
+            THEN ({raw_date})::date
+        END
+    """
+
+
+def normalize_filter_value(value: object) -> str:
+    """Normalize Streamlit/CLI filter values into a compact string."""
+
+    if value is None:
+        return ""
+    text = str(value).strip()
+    if text.lower() in {"", "none", "todos", "todas"}:
+        return ""
+    return text

@@ -1,4 +1,4 @@
-# RAG Books
+# Quality Intelligence Assistant
 
 ![Python](https://img.shields.io/badge/Python-3.11+-3776AB?style=for-the-badge&logo=python&logoColor=white)
 ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-4169E1?style=for-the-badge&logo=postgresql&logoColor=white)
@@ -6,371 +6,381 @@
 ![OpenAI](https://img.shields.io/badge/OpenAI-API-412991?style=for-the-badge&logo=openai&logoColor=white)
 ![Streamlit](https://img.shields.io/badge/Streamlit-UI-FF4B4B?style=for-the-badge&logo=streamlit&logoColor=white)
 ![Conda](https://img.shields.io/badge/Conda-env-44A833?style=for-the-badge&logo=anaconda&logoColor=white)
-![Loguru](https://img.shields.io/badge/Loguru-logging-000000?style=for-the-badge&logo=python&logoColor=white)
 ![Windows](https://img.shields.io/badge/Windows-PowerShell-0078D6?style=for-the-badge&logo=windows&logoColor=white)
 
-Sistema **RAG (Retrieval-Augmented Generation)** parametrizable para libros literarios o documentos de otros dominios (por ejemplo, sistemas de gestion).
-La base de datos es unica (`RAG_DB`) y cada dominio vive en su propio esquema PostgreSQL, lo que permite indexar y consultar corpus separados sin mezclar contextos.
+Sistema RAG profesional para inteligencia documental y soporte operativo basado
+en evidencia. El objetivo no es crear un chatbot generico, sino una herramienta
+para consultar, recuperar, interpretar y conectar informacion tecnica de calidad,
+operaciones, Lean Six Sigma, manufactura, supply chain y QMS.
+
+El dominio principal es `quality_intelligence`, dentro de la base PostgreSQL
+`RAG_DB`.
+
+## Para que sirve
+
+El asistente esta orientado a documentos como:
+
+- SOPs y procedimientos.
+- CAPA, desviaciones y no conformidades.
+- Auditorias internas, externas, de cliente o proveedor.
+- Reclamos de cliente.
+- Especificaciones de producto, proceso, empaque o cliente.
+- Reportes de calidad.
+- Lecciones aprendidas.
+- Proyectos DMAIC.
+- Indicadores operativos.
+- Documentacion QMS.
+
+El sistema responde con evidencia recuperada, citas por documento/pagina,
+contexto operativo y una estructura util para tomar decisiones.
+
+## Funcionalidades principales
+
+- Ingesta de PDFs con extraccion por pagina, hash SHA-256 y deduplicacion por
+  contenido.
+- Chunking con solape configurable y conservacion de `page_start` / `page_end`.
+- Embeddings OpenAI almacenados en PostgreSQL + pgvector.
+- Perfil especializado `quality_intelligence` para respuestas en contexto de
+  calidad, manufactura, mejora continua y QMS.
+- Filtros operativos en Streamlit:
+  - planta / sitio
+  - proceso / area
+  - producto / SKU
+  - cliente
+  - tipo documental
+  - auditoria / hallazgo
+  - rango de fechas
+- Retrieval semantico con diversificacion por documento.
+- Citas trazables tipo `[S1] Documento, pp. 4-5`.
+- Expansor de fuentes con score, archivo, metadata y extracto.
+- Inferencia inicial de metadata QMS desde nombres controlados de archivo.
+- Esquema SQL extendido para trazabilidad, evidencia, eventos de calidad,
+  auditorias, DMAIC, indicadores y decisiones.
+- Script para inicializar el esquema profesional `quality_intelligence`.
 
 ## Arquitectura
 
 ```mermaid
 flowchart LR
-    subgraph User["Usuario"]
-        U[Persona]
-    end
+    U["Usuario de calidad / operaciones"] --> ST["Streamlit app.py"]
+    U --> CLI["CLI scripts"]
 
-    subgraph UI["Interfaces"]
-        ST["Streamlit app.py"]
-        CLI["CLI scripts/ingest_pdfs.py"]
-    end
-
-    subgraph Core["Nucleo rag_books"]
-        ING["PDFIngestor<br/>ingest.py"]
-        PDF["PDF loader<br/>pdf_loader.py"]
-        SPL["Text splitter<br/>text_splitter.py"]
-        EMB["EmbeddingClient<br/>embeddings.py"]
-        RET["RAGRetriever<br/>retriever.py"]
-        LLM["LLMClient<br/>llm.py"]
-        PROF["Domain profiles<br/>domain_profiles.py"]
-        CFG["Settings<br/>config.py"]
-    end
-
-    subgraph External["Servicios externos"]
-        OAI["OpenAI API<br/>chat + embeddings"]
-        PG[("PostgreSQL<br/>pgvector")]
-    end
-
-    U --> ST
-    U --> CLI
-    ST --> ING
-    ST --> RET
-    ST --> LLM
+    ST --> ING["PDFIngestor"]
+    ST --> RET["RAGRetriever"]
+    ST --> LLM["LLMClient"]
     CLI --> ING
 
-    ING --> PDF
-    ING --> SPL
-    ING --> EMB
-    ING --> PG
+    ING --> PDF["PDF loader"]
+    ING --> SPL["Text splitter"]
+    ING --> META["Quality metadata"]
+    ING --> EMB["EmbeddingClient"]
+    ING --> PG[("PostgreSQL RAG_DB<br/>quality_intelligence + pgvector")]
 
     RET --> EMB
     RET --> PG
-    LLM --> PROF
-    LLM --> OAI
+    LLM --> OAI["OpenAI API"]
     EMB --> OAI
 
-    CFG -.->|inyecta config| ING
-    CFG -.->|inyecta config| RET
-    CFG -.->|inyecta config| LLM
+    PG --> EV["Evidencia trazable<br/>documento + pagina + metadata"]
+    EV --> LLM
 ```
 
-## Stack
+Flujo de trabajo:
 
-- **PostgreSQL** con extension `vector` (pgvector) para busqueda semantica con indices HNSW (fallback automatico a IVFFLAT).
-- **Python 3.11+** como lenguaje principal.
-- **OpenAI API** para embeddings (`text-embedding-3-large`, 2000 dim por defecto) y respuestas del LLM (`gpt-5.5` por defecto).
-- **Streamlit** como interfaz web con chat, configuracion en barra lateral, panel de indice y vista de fuentes.
-- **pypdf** para extraccion de texto pagina por pagina.
-- **psycopg 3** como driver PostgreSQL.
-- **Conda** para gestion del entorno (`environment.yml`).
-- **Loguru** para logging estructurado con rotacion en disco.
-
-## Licencia
-
-Este proyecto se distribuye bajo la licencia Creative Commons Attribution-ShareAlike 4.0 International (CC BY-SA 4.0).
-Consulta el archivo `LICENSE.md` para los términos completos.
-
-## Funcionalidad
-
-### Ingesta de PDFs
-
-- Descubrimiento de PDFs en la **raiz** de la carpeta configurada (no recursivo).
-- Extraccion de texto por pagina con `pypdf`, incluyendo metadatos de titulo y autor cuando estan presentes.
-- **Deduplicacion por contenido**: cada PDF se identifica con un hash SHA-256; si el archivo no cambio, se omite la reingesta.
-- **Modo `--force`** para reemplazar todos los chunks de un archivo y reingestar desde cero.
-- Particion en chunks con tamano y solape configurables (`RAG_CHUNK_SIZE`, `RAG_CHUNK_OVERLAP`), con ajuste a fronteras naturales (oracion, parrafo, salto de linea).
-- Conservacion del rango de paginas por chunk para citas precisas.
-
-```mermaid
-flowchart TD
-    A[list_pdfs<br/>carpeta raiz] --> B{Para cada PDF}
-    B --> C[load_pdf<br/>texto por pagina + SHA-256]
-    C --> D{force?}
-    D -->|si| E[delete_documents_by_source]
-    D -->|no| F{Hash ya<br/>indexado?}
-    F -->|si| G[Skip<br/>documents_skipped++]
-    F -->|no| H[split_pages<br/>chunks con solape]
-    E --> H
-    H --> I{Hay texto?}
-    I -->|no| J[Registrar error]
-    I -->|si| K[embed_texts<br/>batches OpenAI]
-    K --> L[insert_document<br/>titulo + autor + hash]
-    L --> M[insert_chunks<br/>contenido + embedding + paginas]
-    M --> N[documents_ingested++<br/>chunks_created += N]
-    G --> B
-    J --> B
-    N --> B
-    B -->|fin| O[IngestResult<br/>resumen + errores]
-```
-
-### Embeddings y almacenamiento
-
-- Llamadas en lotes a la API de embeddings con limite por cantidad de textos y por caracteres totales.
-- Soporte para dimensiones personalizadas en modelos `text-embedding-3-*`.
-- Tabla `documents` y tabla `chunks` por esquema/dominio, con `UNIQUE` por `(domain, source_path, content_hash)` y por `(document_id, chunk_index)`.
-- **Validacion automatica de dimension**: si la dimension de embedding cambia y las tablas estan vacias, se recrean; si tienen datos, se aborta con instrucciones claras.
-- Indice **HNSW** sobre `embedding` con metrica coseno; fallback a **IVFFLAT** si la version de pgvector no soporta HNSW; si ambos fallan, se usa busqueda exacta.
-
-### Recuperacion (retriever)
-
-- Embedding de la pregunta del usuario y busqueda kNN por distancia coseno (`<=>`).
-- **Diversificacion por documento**: se buscan `RAG_CANDIDATE_K` candidatos, se limitan a `RAG_MAX_CHUNKS_PER_DOCUMENT` por documento y se rellena hasta `RAG_TOP_K` con los siguientes mejores.
-- Cada chunk recuperado se etiqueta con un id de cita (`S1`, `S2`, ...) que incluye titulo o nombre de archivo y rango de paginas.
-
-```mermaid
-sequenceDiagram
-    actor U as Usuario
-    participant ST as Streamlit
-    participant R as RAGRetriever
-    participant E as EmbeddingClient
-    participant DB as pgvector
-    participant L as LLMClient
-    participant O as OpenAI
-
-    U->>ST: Escribe pregunta
-    ST->>R: retrieve(question, top_k, candidate_k)
-    R->>E: embed_query(question)
-    E->>O: POST /embeddings
-    O-->>E: vector
-    E-->>R: query_embedding
-
-    alt candidate_k > top_k
-        R->>DB: search_diverse(top_k, candidate_k, max_per_doc)
-        DB-->>R: candidatos kNN
-        R->>R: Limitar por documento<br/>y rellenar hasta top_k
-    else
-        R->>DB: search(top_k)
-        DB-->>R: kNN exacto
-    end
-
-    R-->>ST: contextos [S1..Sk] con citas
-    ST->>L: answer(question, contextos, profile, history)
-    L->>L: build_context_block<br/>build_history_block
-    L->>O: POST /chat/completions
-    O-->>L: respuesta
-    L-->>ST: texto con citas [S1], [S2]
-    ST-->>U: respuesta + expansor Fuentes
-```
-
-### Generacion de respuesta (LLM)
-
-- Prompts especializados por **dominio** (perfiles `literatura` y `sistemas_gestion` integrados, mas un perfil **personalizado** editable desde la UI).
-- Construccion del prompt con: instruccion de sistema/desarrollador, historial reciente de la conversacion, bloque de contexto recuperado con citas y la pregunta del usuario.
-- **Memoria conversacional corta** en Streamlit: el historial se envia al LLM solo para resolver referencias, no como evidencia documental.
-- Parametros compatibles segun modelo: `reasoning_effort` y `verbosity` para la familia GPT-5; `temperature` solo para modelos que la soportan.
-- Rol de instruccion `developer` para `gpt-5*`/`o*`, `system` para el resto.
-
-### Interfaz Streamlit (`app.py`)
-
-Barra lateral:
-- Carpeta de PDFs.
-- Selector de dominio (literatura, sistemas de gestion o personalizado con prompt editable).
-- Sliders: chunks recuperados (`top_k`), candidatos para diversificar, max chunks por documento.
-- Tamano y solape de chunk para reingestas.
-- Estado de conexion a OpenAI y boton **Probar OpenAI API**.
-- Boton **Limpiar conversacion**.
-
-Panel izquierdo (Indice):
-- **Inicializar BD**: crea esquema, tablas e indices.
-- **Ingerir PDFs**: ejecuta la ingesta con mensajes de progreso en vivo.
-- Tabla con documentos indexados y conteo de chunks.
-
-Panel derecho (Consulta):
-- Chat con historial visible.
-- Cada respuesta del asistente incluye un expansor **Fuentes** con cita, score, archivo y extracto del chunk.
-
-### CLI
-
-Script `scripts/ingest_pdfs.py` para ingesta batch (mismo flujo que el boton de Streamlit):
-
-```powershell
-python scripts\ingest_pdfs.py --pdf-dir .\books --domain literatura
-python scripts\ingest_pdfs.py --pdf-dir .\books --domain literatura --force
-```
-
-### Observabilidad y salud
-
-- Logging con **Loguru** a consola y a `logs/rag_books.log` con rotacion (5 MB) y retencion (10 dias).
-- Prueba automatica de conexion a OpenAI al iniciar la app (recupera metadata del modelo configurado).
+1. El usuario coloca documentos tecnicos en `quality_docs/`.
+2. La ingesta extrae texto, calcula hash, infiere metadata y genera chunks.
+3. Los chunks se convierten en embeddings y se guardan en pgvector.
+4. El usuario consulta usando filtros operativos.
+5. El retriever combina similitud semantica, filtros y diversidad documental.
+6. El LLM genera una respuesta basada solo en evidencia recuperada.
+7. La UI muestra respuesta, citas, fuentes y metadata.
 
 ## Estructura del proyecto
 
-- [app.py](app.py): interfaz Streamlit (configuracion, ingesta, listado de indice, chat con memoria y fuentes).
-- [scripts/ingest_pdfs.py](scripts/ingest_pdfs.py): entrada CLI para ingesta batch.
-- [src/rag_books/config.py](src/rag_books/config.py): carga de `.env` y dataclasses de configuracion (`DatabaseSettings`, `OpenAISettings`, `RagSettings`).
-- [src/rag_books/db.py](src/rag_books/db.py): esquemas por dominio, tablas, indices vectoriales, busqueda kNN y busqueda diversificada por documento.
-- [src/rag_books/embeddings.py](src/rag_books/embeddings.py): cliente OpenAI de embeddings con batching por items y por caracteres.
-- [src/rag_books/llm.py](src/rag_books/llm.py): construccion del prompt y llamada a Chat Completions.
-- [src/rag_books/retriever.py](src/rag_books/retriever.py): orquestacion de busqueda semantica y etiquetado de citas.
-- [src/rag_books/ingest.py](src/rag_books/ingest.py): pipeline de ingesta (descubrir, extraer, chunk, embed, persistir).
-- [src/rag_books/pdf_loader.py](src/rag_books/pdf_loader.py): listado, extraccion y hashing de PDFs.
-- [src/rag_books/text_splitter.py](src/rag_books/text_splitter.py): chunking con solape y rango de paginas.
-- [src/rag_books/domain_profiles.py](src/rag_books/domain_profiles.py): perfiles de prompt por dominio.
-- [src/rag_books/openai_health.py](src/rag_books/openai_health.py): verificacion de conectividad con OpenAI.
-- [src/rag_books/logging.py](src/rag_books/logging.py): configuracion centralizada de Loguru.
+- `app.py`: interfaz Streamlit del Quality Intelligence Assistant.
+- `quality_docs/`: carpeta recomendada para documentos tecnicos a ingerir.
+- `scripts/ingest_pdfs.py`: ingesta batch de PDFs.
+- `scripts/init_quality_schema.py`: inicializa el esquema profesional QMS.
+- `sql/001_quality_intelligence_schema.sql`: migracion PostgreSQL extendida.
+- `docs/quality_intelligence_architecture.md`: arquitectura funcional completa,
+  metadata, retrieval, roadmap, riesgos y buenas practicas.
+- `src/rag_books/config.py`: configuracion desde `.env`.
+- `src/rag_books/db.py`: persistencia PostgreSQL, pgvector, indices, filtros y
+  busqueda semantica.
+- `src/rag_books/ingest.py`: pipeline de ingesta.
+- `src/rag_books/quality_metadata.py`: inferencia de metadata QMS desde nombres
+  de archivo.
+- `src/rag_books/retriever.py`: retrieval y etiquetado de fuentes.
+- `src/rag_books/llm.py`: prompt final y llamada al modelo.
+- `src/rag_books/domain_profiles.py`: perfiles de dominio, incluyendo
+  `quality_intelligence`.
+- `src/rag_books/pdf_loader.py`: lectura y hashing de PDFs.
+- `src/rag_books/text_splitter.py`: chunking con rango de paginas.
+- `src/rag_books/embeddings.py`: cliente de embeddings OpenAI.
 
 ## Modelo de datos
 
-Cada dominio es un **esquema PostgreSQL** independiente dentro de `RAG_DB`, con sus tablas `documents` y `chunks`. La extension `pgvector` vive en un esquema compartido (`extensions` por defecto), de modo que los tipos `vector(N)` y los operadores `vector_cosine_ops` se reutilizan entre dominios.
+El proyecto mantiene compatibilidad con las tablas base del RAG:
 
-```mermaid
-flowchart TB
-    subgraph DB["RAG_DB (PostgreSQL)"]
-        subgraph EXT["schema: extensions"]
-            V["extension vector<br/>tipo vector(N)<br/>ops vector_cosine_ops"]
-        end
-        subgraph S1["schema: literatura"]
-            D1[(documents)]
-            C1[(chunks)]
-            I1["HNSW / IVFFLAT<br/>sobre embedding"]
-            D1 --- C1
-            C1 -.-> I1
-        end
-        subgraph S2["schema: sistemas_gestion"]
-            D2[(documents)]
-            C2[(chunks)]
-            I2["HNSW / IVFFLAT<br/>sobre embedding"]
-            D2 --- C2
-            C2 -.-> I2
-        end
-        subgraph S3["schema: &lt;RAG_DOMAIN&gt;"]
-            D3[(documents)]
-            C3[(chunks)]
-            I3["HNSW / IVFFLAT<br/>sobre embedding"]
-            D3 --- C3
-            C3 -.-> I3
-        end
-    end
-    V -.->|tipo vector| C1
-    V -.->|tipo vector| C2
-    V -.->|tipo vector| C3
-```
+- `quality_intelligence.documents`
+- `quality_intelligence.chunks`
+
+Y agrega tablas profesionales para contexto operativo y trazabilidad:
+
+- `document_types`: clasificacion documental.
+- `plants`, `processes`, `products`, `customers`: dimensiones operativas.
+- `quality_events`: CAPA, no conformidades, desviaciones, reclamos y hallazgos.
+- `document_event_links`: relacion entre documentos y eventos.
+- `audit_records`: auditorias y hallazgos.
+- `dmaic_projects`: proyectos Lean Six Sigma.
+- `operational_indicator_measurements`: KPIs por periodo.
+- `retrieval_sessions`: preguntas, filtros y respuestas.
+- `retrieval_evidence`: chunks usados como evidencia.
+- `decision_records`: decisiones, racional, riesgo y evidencia asociada.
 
 ```mermaid
 erDiagram
-    DOCUMENTS ||--o{ CHUNKS : "ON DELETE CASCADE"
+    DOCUMENTS ||--o{ CHUNKS : contains
+    DOCUMENTS ||--o{ DOCUMENT_EVENT_LINKS : supports
+    QUALITY_EVENTS ||--o{ DOCUMENT_EVENT_LINKS : relates
+    RETRIEVAL_SESSIONS ||--o{ RETRIEVAL_EVIDENCE : cites
+    CHUNKS ||--o{ RETRIEVAL_EVIDENCE : evidence
+    RETRIEVAL_SESSIONS ||--o{ DECISION_RECORDS : informs
+
     DOCUMENTS {
         uuid id PK
         text domain
-        text source_path
         text file_name
-        text title
-        text author
         text content_hash
+        text document_type_code
+        text revision
+        date effective_date
+        text plant_code
+        text process_code
+        text product_code
+        text customer_code
         jsonb metadata
-        timestamptz created_at
     }
     CHUNKS {
         uuid id PK
         uuid document_id FK
-        text domain
         int chunk_index
         int page_start
         int page_end
         text content
-        int token_count
-        vector embedding "dim = OPENAI_EMBEDDING_DIM"
+        vector embedding
         jsonb metadata
-        timestamptz created_at
+    }
+    QUALITY_EVENTS {
+        text event_code PK
+        text event_type
+        text severity
+        text root_cause
+        text corrective_action
+        text status
     }
 ```
 
-Restricciones clave:
+## Metadata recomendada
 
-- `documents`: `UNIQUE (domain, source_path, content_hash)` habilita la deduplicacion por contenido.
-- `chunks`: `UNIQUE (document_id, chunk_index)` permite reingesta idempotente con `ON CONFLICT ... DO UPDATE`.
-- Indices secundarios: `documents_domain_idx`, `chunks_domain_idx` y el indice vectorial HNSW/IVFFLAT sobre `chunks.embedding`.
+Metadata minima por documento:
+
+- `document_type`: SOP, CAPA, AUDIT, COMPLAINT, SPECIFICATION, DMAIC, KPI, QMS.
+- `document_code`, `revision`, `lifecycle_status`.
+- `document_date`, `effective_date`, `review_due_date`.
+- `plant`, `process`, `product`, `customer`.
+- `owner_area`, `approval_status`, `approved_by`.
+- `qms_process`, `risk_level`, `source_system`, `source_record_id`.
+
+Metadata por chunk:
+
+- `page_start`, `page_end`.
+- `section_title`, `section_number`, `clause_ref`.
+- `requirement_type`.
+- `process_step`, `risk_signal`, `key_terms`.
+- IDs detectados: CAPA, auditoria, reclamo, lote, SKU o cliente.
+
+## Convencion de nombres para demo
+
+Para que la metadata inicial funcione sin cargar un maestro externo, coloca los
+PDFs en `quality_docs/` con esta convencion:
+
+```text
+<document_type>__<plant>__<process>__<product-or-customer>__<code>__rev-<revision>.pdf
+```
+
+Ejemplo:
+
+```text
+SOP__PlantaNorte__Empaque__SKU-100__SOP-QA-014__rev-03.pdf
+CAPA__PlantaNorte__Empaque__SKU-100__CAPA-2026-008__rev-01.pdf
+AUDIT__PlantaSur__Liberacion__Cliente-ACME__AUD-2026-014__rev-00.pdf
+```
+
+En produccion, la metadata deberia venir de QMS, SharePoint, ERP, MES, LIMS,
+CRM, sistema de auditorias o sistema CAPA.
 
 ## Configuracion
 
-`.env` contiene la configuracion local y esta ignorado por git. `.env.sample` contiene una plantilla segura con valores mock.
+`.env` contiene la configuracion local y no debe versionarse. `.env.sample`
+contiene una plantilla segura.
 
-### Base de datos
+Valores principales:
 
-- `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD`: credenciales PostgreSQL.
-- `DB_SSLMODE`: modo SSL de psycopg (por defecto `prefer`).
-- `DB_EXTENSIONS_SCHEMA`: esquema donde reside `pgvector` (por defecto `extensions`).
+```text
+DB_NAME=RAG_DB
+RAG_DOMAIN=quality_intelligence
+RAG_PDF_DIR=./quality_docs
+OPENAI_CHAT_MODEL=gpt-5.5
+OPENAI_EMBEDDING_MODEL=text-embedding-3-large
+OPENAI_EMBEDDING_DIM=2000
+```
 
-### OpenAI
+Variables de base de datos:
 
-- `OPENAI_API_KEY`: clave de OpenAI. La app detecta placeholders comunes y los rechaza.
-- `OPENAI_BASE_URL`: vacio para OpenAI oficial; si lo usas debe ser una URL completa (`https://...`).
-- `OPENAI_CHAT_MODEL`: modelo para respuesta. Por defecto `gpt-5.5`.
-- `OPENAI_EMBEDDING_MODEL` y `OPENAI_EMBEDDING_DIM`: modelo y dimension de embeddings. Por defecto `text-embedding-3-large` y `2000` (limite practico para HNSW/IVFFLAT de pgvector).
-- `OPENAI_EMBEDDING_BATCH_SIZE`: maximo de chunks por llamada (por defecto `64`).
-- `OPENAI_EMBEDDING_MAX_BATCH_CHARS`: presupuesto aproximado de caracteres por lote (por defecto `240000`).
-- `OPENAI_TEMPERATURE`: solo se aplica a modelos que la soportan (no GPT-5).
-- `OPENAI_REASONING_EFFORT`: `minimal`, `low`, `medium`, `high` para modelos compatibles (por defecto `medium`).
-- `OPENAI_VERBOSITY`: `low`, `medium`, `high` para modelos compatibles (por defecto `high`).
+- `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD`.
+- `DB_SSLMODE`.
+- `DB_EXTENSIONS_SCHEMA`, por defecto `extensions`.
 
-### RAG
+Variables RAG:
 
-- `RAG_DOMAIN`: dominio logico y nombre del esquema PostgreSQL (identificador SQL valido).
-- `RAG_PDF_DIR`: carpeta de entrada (los PDFs deben estar en la raiz, no en subcarpetas).
-- `RAG_CHUNK_SIZE` / `RAG_CHUNK_OVERLAP`: tamano y solape de chunks en caracteres.
-- `RAG_TOP_K`: chunks finales enviados al LLM.
-- `RAG_CANDIDATE_K`: candidatos iniciales antes de diversificar.
-- `RAG_MAX_CHUNKS_PER_DOCUMENT`: tope de chunks por documento durante la diversificacion.
-- `RAG_MAX_CONTEXT_CHARS`: limite total de caracteres de contexto enviados al LLM.
+- `RAG_DOMAIN`: esquema/dominio PostgreSQL.
+- `RAG_PDF_DIR`: carpeta raiz con PDFs.
+- `RAG_CHUNK_SIZE` y `RAG_CHUNK_OVERLAP`.
+- `RAG_TOP_K`, `RAG_CANDIDATE_K`, `RAG_MAX_CHUNKS_PER_DOCUMENT`.
+- `RAG_MAX_CONTEXT_CHARS`.
 
-## Instalacion con Conda
+## Instalacion
+
+Crear y activar el entorno:
 
 ```powershell
 conda env create -f environment.yml
 conda activate rag-books
 ```
 
-`requirements.txt` queda disponible si prefieres instalar las mismas dependencias con `pip`.
+Tambien puedes usar `requirements.txt` con `pip` si prefieres otro entorno.
 
-## Preparar base de datos
+## Preparar PostgreSQL
 
-La app crea automaticamente el esquema del dominio, las tablas (`documents`, `chunks`) y los indices vectoriales. La extension `vector` debe existir o el usuario debe tener permiso para crearla:
+La base objetivo es `RAG_DB`. El usuario configurado debe poder conectarse a
+esa base y crear objetos dentro de ella.
+
+Si la base no existe, creala con un usuario administrador:
 
 ```sql
-CREATE SCHEMA IF NOT EXISTS extensions;
-CREATE EXTENSION IF NOT EXISTS vector WITH SCHEMA extensions;
+CREATE DATABASE "RAG_DB";
 ```
 
-Configura `DB_EXTENSIONS_SCHEMA=extensions` para que los indices encuentren las clases de operadores de pgvector (`vector_cosine_ops`).
-
-## Ingestar PDFs
-
-Coloca los PDFs en la raiz de la carpeta configurada (por ejemplo `books/`) y ejecuta:
+Luego aplica el esquema profesional:
 
 ```powershell
-python scripts\ingest_pdfs.py --pdf-dir .\books --domain literatura
+conda run -n rag-books python scripts\init_quality_schema.py --db-name RAG_DB
 ```
 
-Para reingestar y reemplazar chunks existentes de un archivo:
+Si el usuario tiene permiso para crear bases:
 
 ```powershell
-python scripts\ingest_pdfs.py --pdf-dir .\books --domain literatura --force
+conda run -n rag-books python scripts\init_quality_schema.py --db-name RAG_DB --create-db
 ```
 
-Tambien puedes ejecutar la ingesta desde el boton **Ingerir PDFs** del panel Indice en Streamlit.
+La app tambien puede crear las tablas base `documents` y `chunks` desde el
+boton **Inicializar BD**, pero la migracion SQL agrega el modelo completo de
+calidad y trazabilidad.
+
+## Ingestar documentos
+
+Coloca PDFs en `quality_docs/` y ejecuta:
+
+```powershell
+conda run -n rag-books python scripts\ingest_pdfs.py --pdf-dir .\quality_docs --domain quality_intelligence
+```
+
+Para reemplazar chunks de archivos ya indexados:
+
+```powershell
+conda run -n rag-books python scripts\ingest_pdfs.py --pdf-dir .\quality_docs --domain quality_intelligence --force
+```
+
+Tambien puedes usar el boton **Ingerir PDFs** desde Streamlit.
 
 ## Ejecutar Streamlit
 
 ```powershell
-streamlit run app.py
+conda run -n rag-books streamlit run app.py --server.port 8501
 ```
 
-Desde la barra lateral puedes cambiar la carpeta de PDFs, el dominio, los parametros de recuperacion y chunking, probar la conexion con OpenAI y limpiar la conversacion.
+O ejecuta `run_app.bat` en Windows.
 
-En Windows tambien puedes abrir la app con doble clic en [run_app.bat](run_app.bat), que activa el entorno Conda `rag-books` y arranca Streamlit en el puerto 8501.
+La interfaz incluye:
 
-## Logs y prueba de API
+- configuracion de dominio y carpeta documental;
+- controles de chunking y retrieval;
+- prueba de conexion con OpenAI;
+- filtros operativos;
+- tabla de documentos indexados;
+- chat operacional;
+- fuentes con score, documento, pagina, metadata y extracto.
 
-La app usa `loguru` para mostrar paso a paso lo que ocurre en consola y guardar un archivo local en `logs/rag_books.log` con rotacion automatica (5 MB, retencion 10 dias).
+## Preguntas ejemplo
 
-Al abrir Streamlit se ejecuta una prueba de conexion a OpenAI con el modelo configurado en `OPENAI_CHAT_MODEL`. Tambien puedes repetirla en cualquier momento desde el boton **Probar OpenAI API** en la barra lateral.
+- Que procedimiento aplica para liberar este producto en esta planta?
+- Que evidencias exige el SOP para cerrar esta etapa?
+- Que CAPA anteriores tuvieron una causa raiz parecida?
+- Que hallazgos de auditoria se repiten por proceso?
+- Que especificacion del cliente define el criterio de aceptacion?
+- Que acciones correctivas fueron verificadas como efectivas?
+- Que riesgos aparecen si cambio este parametro de proceso?
+- Que documentos soportan la decision de aceptar o rechazar un lote?
+- Que brechas de informacion impiden responder con confianza?
+- Que documentos debo revisar antes de una auditoria externa?
+
+## Buenas practicas de uso
+
+- Usa filtros operativos antes de consultar temas de alto riesgo.
+- Revisa siempre las fuentes citadas, especialmente revision y vigencia.
+- No trates la respuesta como aprobacion formal automatica.
+- Declara brechas cuando falten documentos, paginas, fechas o estado de
+  aprobacion.
+- Mantiene documentos obsoletos separados o marcados con metadata.
+- Usa preguntas doradas para evaluar periodicamente la calidad del retrieval.
+
+## Limitaciones y riesgos
+
+- PDFs escaneados requieren OCR antes de la ingesta.
+- Metadata incompleta reduce la precision de filtros.
+- La similitud semantica puede recuperar documentos parecidos pero no aplicables.
+- Documentos obsoletos pueden contaminar respuestas si no se controla vigencia.
+- Causa raiz, riesgo y decision final requieren validacion humana.
+- Informacion sensible de cliente, producto o proceso requiere controles de
+  acceso antes de un despliegue empresarial.
+
+## Roadmap sugerido
+
+1. Base profesional: perfil `quality_intelligence`, filtros, metadata y esquema
+   QMS.
+2. Retrieval robusto: metadata externa, busqueda hibrida, reranking y penalizar
+   documentos obsoletos.
+3. Soporte a decisiones: registro de sesiones, evidencias y decisiones.
+4. Demo empresarial: dataset simulado realista con casos de auditoria, reclamo,
+   CAPA y DMAIC.
+5. Producto Quality Analytics: conectores QMS/SharePoint/ERP, permisos, evals,
+   monitoreo y despliegue controlado.
+
+## Documentacion ampliada
+
+La arquitectura funcional completa esta en:
+
+```text
+docs/quality_intelligence_architecture.md
+```
+
+Incluye detalle sobre tablas PostgreSQL, metadata QMS, tipos documentales,
+flujos de retrieval, preguntas esperadas, trazabilidad, riesgo, decisiones,
+roadmap, riesgos tecnicos y buenas practicas de embeddings/chunking.
+
+## Licencia
+
+Este proyecto se distribuye bajo la licencia Creative Commons
+Attribution-ShareAlike 4.0 International (CC BY-SA 4.0). Consulta
+`LICENSE.md` para los terminos completos.

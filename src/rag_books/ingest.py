@@ -17,6 +17,7 @@ from .config import Settings, get_settings
 from .db import VectorStore, validate_identifier
 from .embeddings import EmbeddingClient
 from .pdf_loader import list_pdfs, load_pdf
+from .quality_metadata import infer_quality_metadata
 from .text_splitter import split_pages
 
 
@@ -178,6 +179,10 @@ class PDFIngestor:
                     batch_size=self.settings.openai.embedding_batch_size,
                 )
 
+                document_metadata = {"pages": len(document.pages)}
+                if target_domain == "quality_intelligence":
+                    document_metadata.update(infer_quality_metadata(pdf_path))
+
                 doc_id = store.insert_document(
                     domain=target_domain,
                     source_path=source_path,
@@ -185,7 +190,7 @@ class PDFIngestor:
                     title=document.title,
                     author=document.author,
                     content_hash=document.content_hash,
-                    metadata={"pages": len(document.pages)},
+                    metadata=document_metadata,
                 )
                 inserted = store.insert_chunks(doc_id, target_domain, chunks, vectors)
                 result.documents_ingested += 1

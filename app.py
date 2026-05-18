@@ -28,10 +28,34 @@ from rag_books.openai_health import check_openai_connection
 from rag_books.retriever import RAGRetriever
 
 
+def _active_filters(raw_filters: dict[str, object]) -> dict[str, str]:
+    """Return only populated operational filters."""
+
+    active: dict[str, str] = {}
+    for key, value in raw_filters.items():
+        text = str(value or "").strip()
+        if text:
+            active[key] = text
+    return active
+
+
+def _source_caption(item) -> str:
+    """Build a compact evidence caption for the UI."""
+
+    metadata = item.result.metadata or {}
+    parts = [f"score={item.result.score:.3f}", item.result.file_name]
+    for key in ("document_type", "plant", "process", "product", "customer", "audit"):
+        value = metadata.get(key) or metadata.get(f"{key}_code")
+        if value:
+            parts.append(f"{key}={value}")
+    return " | ".join(parts)
+
+
 setup_logging(ROOT)
 logger.info("Starting Streamlit app.")
-st.set_page_config(page_title="RAG Books", page_icon=":books:", layout="wide")
-st.title("RAG Books")
+st.set_page_config(page_title="Quality Intelligence Assistant", page_icon=":clipboard:", layout="wide")
+st.title("Quality Intelligence Assistant")
+st.caption("Inteligencia documental para calidad, operaciones, Lean Six Sigma y QMS basada en evidencia.")
 
 base_settings = get_settings()
 logger.info(
@@ -52,8 +76,8 @@ if "openai_health" not in st.session_state:
     st.session_state.openai_health = check_openai_connection(base_settings.openai)
 
 with st.sidebar:
-    st.header("Configuracion")
-    pdf_dir = st.text_input("Carpeta de PDFs", value=str(base_settings.rag.pdf_dir))
+    st.header("Configuracion del asistente")
+    pdf_dir = st.text_input("Repositorio documental", value=str(base_settings.rag.pdf_dir))
 
     profile_keys = list(PROFILES.keys()) + ["custom"]
     default_index = (
@@ -82,7 +106,7 @@ with st.sidebar:
         domain = profile_key
         custom_prompt = None
 
-    top_k = st.slider("Chunks recuperados", min_value=1, max_value=50, value=base_settings.rag.top_k)
+    top_k = st.slider("Evidencias recuperadas", min_value=1, max_value=50, value=base_settings.rag.top_k)
     candidate_k = st.slider(
         "Candidatos para diversificar",
         min_value=top_k,
@@ -103,6 +127,33 @@ with st.sidebar:
         value=min(base_settings.rag.chunk_overlap, int(chunk_size) - 1),
         step=25,
     )
+
+    st.divider()
+    st.header("Filtros operativos")
+    plant_filter = st.text_input("Planta / sitio", placeholder="Ej. Planta Norte")
+    process_filter = st.text_input("Proceso / area", placeholder="Ej. Empaque")
+    product_filter = st.text_input("Producto / SKU", placeholder="Ej. QA-100")
+    customer_filter = st.text_input("Cliente", placeholder="Ej. ACME")
+    document_type_filter = st.selectbox(
+        "Tipo documental",
+        [
+            "",
+            "SOP",
+            "Procedimiento",
+            "CAPA",
+            "Auditoria",
+            "Reclamo",
+            "Especificacion",
+            "Reporte de calidad",
+            "Leccion aprendida",
+            "DMAIC",
+            "Indicador",
+        ],
+        format_func=lambda value: "Todos" if not value else value,
+    )
+    audit_filter = st.text_input("Auditoria / hallazgo", placeholder="Ej. AUD-2026-014")
+    date_from_filter = st.text_input("Fecha desde", placeholder="YYYY-MM-DD")
+    date_to_filter = st.text_input("Fecha hasta", placeholder="YYYY-MM-DD")
 
     health = st.session_state.openai_health
     if health.ok:
@@ -131,6 +182,18 @@ rag_settings = replace(
     chunk_overlap=int(chunk_overlap),
 )
 settings = replace(base_settings, rag=rag_settings)
+quality_filters = _active_filters(
+    {
+        "plant": plant_filter,
+        "process": process_filter,
+        "product": product_filter,
+        "customer": customer_filter,
+        "document_type": document_type_filter,
+        "audit": audit_filter,
+        "date_from": date_from_filter,
+        "date_to": date_to_filter,
+    }
+)
 
 try:
     validate_identifier(settings.rag.domain)
@@ -152,7 +215,12 @@ logger.info("Runtime components initialized for schema/domain '{}'.", settings.r
 left, right = st.columns([0.36, 0.64], gap="large")
 
 with left:
-    st.subheader("Indice")
+    st.subheader("Base de conocimiento")
+    metric_cols = st.columns(3)
+    metric_cols[0].metric("Dominio", settings.rag.domain)
+    metric_cols[1].metric("Top evidencias", settings.rag.top_k)
+    metric_cols[2].metric("Filtros", len(quality_filters))
+
     if st.button("Inicializar BD", width="stretch"):
         try:
             logger.info("Initializing database schema for domain '{}'.", settings.rag.domain)
@@ -194,7 +262,7 @@ with left:
 with right:
     title_col, clear_col = st.columns([0.75, 0.25])
     with title_col:
-        st.subheader("Consulta")
+        st.subheader("Consulta operacional")
     with clear_col:
         if st.button("Limpiar chat", width="stretch"):
             logger.info("Clearing chat conversation from chat panel.")
@@ -212,7 +280,10 @@ with right:
                         st.caption(source["caption"])
                         st.write(source["content"])
 
-    question = st.chat_input("Pregunta sobre los documentos indexados")
+    if quality_filters:
+        st.caption("Filtros activos: " + ", ".join(f"{key}={value}" for key, value in quality_filters.items()))
+
+    question = st.chat_input("Pregunta sobre procedimientos, CAPA, auditorias, reclamos, indicadores o QMS")
 
     if question:
         logger.info("Received chat question. chars={}, domain='{}'.", len(question), settings.rag.domain)
@@ -236,6 +307,7 @@ with right:
                     top_k=settings.rag.top_k,
                     candidate_k=settings.rag.candidate_k,
                     max_chunks_per_document=settings.rag.max_chunks_per_document,
+                    filters=quality_filters,
                 )
                 logger.info("Retrieved {} contexts. Calling LLM.", len(contexts))
                 answer = llm_client.answer(
@@ -252,7 +324,7 @@ with right:
                 st.session_state.sources_by_turn[assistant_turn_index] = [
                     {
                         "citation": item.citation,
-                        "caption": f"score={item.result.score:.3f} | {item.result.file_name}",
+                        "caption": _source_caption(item),
                         "content": item.result.content[:1200],
                     }
                     for item in contexts
@@ -262,7 +334,7 @@ with right:
                 with st.expander("Fuentes"):
                     for item in contexts:
                         st.markdown(f"**{item.citation}**")
-                        st.caption(f"score={item.result.score:.3f} | {item.result.file_name}")
+                        st.caption(_source_caption(item))
                         st.write(item.result.content[:1200])
             except Exception as exc:
                 logger.exception("Chat answer failed.")
@@ -270,4 +342,4 @@ with right:
                 st.error(error_message)
                 st.session_state.messages.append({"role": "assistant", "content": error_message})
     elif not st.session_state.messages:
-        st.write("Ingiere PDFs y escribe una pregunta para consultar el indice.")
+        st.write("Ingiere documentos tecnicos y escribe una pregunta para consultar evidencia operacional.")
