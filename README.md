@@ -13,8 +13,8 @@ en evidencia. El objetivo no es crear un chatbot generico, sino una herramienta
 para consultar, recuperar, interpretar y conectar informacion tecnica de calidad,
 operaciones, Lean Six Sigma, manufactura, supply chain y QMS.
 
-El dominio principal es `quality_intelligence`, dentro de la base PostgreSQL
-`RAG_DB`.
+La base operativa del sistema es PostgreSQL (`RAG_DB`) y el esquema principal
+del producto es `quality_intelligence`.
 
 ## Para que sirve
 
@@ -120,12 +120,13 @@ Flujo de trabajo:
 
 ## Modelo de datos
 
-El proyecto mantiene compatibilidad con las tablas base del RAG:
+El modelo de datos esta disenado alrededor de dos tablas documentales centrales:
 
 - `quality_intelligence.documents`
 - `quality_intelligence.chunks`
 
-Y agrega tablas profesionales para contexto operativo y trazabilidad:
+Sobre esa base documental, el esquema incorpora tablas para contexto operativo,
+trazabilidad, eventos de calidad, evidencia y decisiones:
 
 - `document_types`: clasificacion documental.
 - `plants`, `processes`, `products`, `customers`: dimensiones operativas.
@@ -284,9 +285,10 @@ Si el usuario tiene permiso para crear bases:
 conda run -n rag-books python scripts\init_quality_schema.py --db-name RAG_DB --create-db
 ```
 
-La app tambien puede crear las tablas base `documents` y `chunks` desde el
-boton **Inicializar BD**, pero la migracion SQL agrega el modelo completo de
-calidad y trazabilidad.
+Desde Streamlit puedes usar **Inicializar BD** para preparar el indice
+documental. Para una instalacion completa del producto, ejecuta la migracion SQL
+porque crea tambien las dimensiones operativas, eventos, auditorias, evidencia,
+indicadores y decisiones.
 
 ## Ingestar documentos
 
