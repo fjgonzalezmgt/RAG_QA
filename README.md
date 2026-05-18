@@ -34,6 +34,143 @@ El asistente esta orientado a documentos como:
 El sistema responde con evidencia recuperada, citas por documento/pagina,
 contexto operativo y una estructura util para tomar decisiones.
 
+## Business case
+
+### Problema
+
+En operaciones reales de calidad y manufactura, la informacion critica suele
+estar distribuida entre procedimientos, especificaciones, CAPA, auditorias,
+reclamos, reportes, indicadores y documentos QMS. Esto provoca:
+
+- busquedas manuales lentas antes de tomar decisiones;
+- dificultad para conectar reclamos, causas raiz, CAPA y auditorias;
+- uso de documentos obsoletos o no aplicables;
+- perdida de conocimiento entre plantas, turnos o equipos;
+- preparacion reactiva ante auditorias;
+- decisiones operativas con evidencia incompleta;
+- alto tiempo invertido por ingenieros, coordinadores y gerentes en rastrear
+  informacion documental.
+
+### Propuesta de valor
+
+El **Quality Intelligence Assistant** centraliza la inteligencia documental del
+sistema de calidad y permite consultar evidencia tecnica con contexto operativo:
+planta, proceso, producto, cliente, auditoria, tipo documental y fecha.
+
+No reemplaza al responsable de calidad ni aprueba decisiones de forma automatica.
+Su valor es acelerar el analisis, mostrar evidencia trazable y reducir el riesgo
+de decisiones sin soporte documental.
+
+### Usuarios objetivo
+
+- Gerentes de calidad y operaciones.
+- Ingenieros de calidad, proceso y mejora continua.
+- Lideres Lean Six Sigma.
+- Auditores internos.
+- Responsables CAPA.
+- Equipos de manufactura, supply chain y servicio al cliente.
+- Analistas de QMS y documentacion.
+
+### Casos de uso empresariales
+
+- Preparacion de auditorias con evidencia por proceso, planta y requisito.
+- Investigacion de reclamos conectando especificaciones, historial y CAPA.
+- Analisis de recurrencia de no conformidades o hallazgos.
+- Consulta rapida de SOPs vigentes y registros requeridos.
+- Revision de riesgos antes de cambios de proceso o producto.
+- Transferencia de lecciones aprendidas entre plantas.
+- Soporte documental para proyectos DMAIC.
+- Analisis de indicadores operativos con contexto de eventos de calidad.
+
+### Impacto esperado
+
+- Menor tiempo de busqueda documental.
+- Mejor trazabilidad entre decision, evidencia y fuente.
+- Mayor reutilizacion de conocimiento tecnico.
+- Preparacion mas ordenada para auditorias.
+- Reduccion de respuestas inconsistentes entre areas o plantas.
+- Identificacion mas rapida de brechas documentales.
+- Mejor soporte para priorizar CAPA, acciones preventivas y proyectos de mejora.
+
+### Indicadores para medir valor
+
+- Tiempo promedio para encontrar evidencia documental.
+- Porcentaje de respuestas con cita valida por pagina/documento.
+- Reduccion de hallazgos por falta de evidencia o documento incorrecto.
+- Tiempo de preparacion de auditoria.
+- Reutilizacion de CAPA/lecciones aprendidas en nuevos eventos.
+- Porcentaje de consultas filtradas por planta, proceso, producto o cliente.
+- Numero de brechas documentales detectadas antes de auditorias.
+
+## Preguntas tipo
+
+Estas preguntas muestran el tipo de interaccion esperada. El objetivo es obtener
+respuestas basadas en evidencia, no opiniones genericas.
+
+### SOPs y procedimientos
+
+- Que procedimiento aplica para liberar este producto en esta planta?
+- Que evidencias exige el SOP para cerrar esta etapa?
+- Que registros son obligatorios segun el procedimiento?
+- Quien es responsable de aprobar o ejecutar esta actividad?
+- Que pasos del procedimiento impactan directamente al cliente?
+- Hay diferencias entre el SOP actual y una revision anterior?
+- Que controles se deben verificar antes de iniciar produccion?
+
+### CAPA, causa raiz y recurrencia
+
+- Que CAPA anteriores tuvieron una causa raiz parecida?
+- Que acciones correctivas se usaron antes para este mismo defecto?
+- Que evidencia existe de que la accion fue efectiva?
+- Esta causa raiz relacionada con algun hallazgo de auditoria?
+- Hay recurrencia por proceso, producto, cliente o planta?
+- Que brechas de informacion impiden cerrar esta CAPA?
+
+### Auditorias y cumplimiento
+
+- Que hallazgos de auditoria se repiten por proceso?
+- Que documentos debo revisar antes de una auditoria externa?
+- Que evidencia necesito preparar para este requisito?
+- Que hallazgos abiertos afectan a esta planta?
+- Que procedimientos soportan este punto de la auditoria?
+- Existe evidencia documental suficiente para demostrar cumplimiento?
+
+### Reclamos de cliente
+
+- Que especificacion del cliente define el criterio de aceptacion?
+- Que reclamos similares se han recibido para este producto?
+- Que CAPA o acciones se relacionan con este reclamo?
+- Que lote, producto, proceso o planta aparece relacionado en la evidencia?
+- Que respuesta tecnica puede sustentarse con documentos existentes?
+- Que informacion falta antes de responder al cliente?
+
+### Especificaciones y liberacion
+
+- Cual es el criterio de aceptacion aplicable?
+- Que especificacion vigente aplica a este producto y cliente?
+- Que tolerancias o limites deben verificarse?
+- Que documentos soportan la decision de aceptar o rechazar un lote?
+- Hay conflicto entre especificacion interna y requerimiento de cliente?
+- Que controles del proceso estan asociados a esta especificacion?
+
+### Riesgo y decisiones operativas
+
+- Que riesgos aparecen si cambio este parametro de proceso?
+- Que impacto potencial existe para cliente, producto, proceso o compliance?
+- Que evidencia soporta una decision de contencion?
+- Que decision recomendada se puede tomar con la evidencia disponible?
+- Que documentos estan vencidos, incompletos o sin aprobacion?
+- Que brechas de informacion impiden responder con confianza?
+
+### DMAIC, mejora continua e indicadores
+
+- Que proyectos DMAIC han tratado un problema similar?
+- Que causas potenciales se identificaron en proyectos anteriores?
+- Que controles quedaron como parte del plan de control?
+- Que indicadores muestran deterioro en este proceso?
+- Que eventos de calidad coinciden con cambios en el KPI?
+- Que lecciones aprendidas aplican a este nuevo proyecto?
+
 ## Funcionalidades principales
 
 - Ingesta de PDFs con extraccion por pagina, hash SHA-256 y deduplicacion por
@@ -323,143 +460,6 @@ La interfaz incluye:
 - tabla de documentos indexados;
 - chat operacional;
 - fuentes con score, documento, pagina, metadata y extracto.
-
-## Business case
-
-### Problema
-
-En operaciones reales de calidad y manufactura, la informacion critica suele
-estar distribuida entre procedimientos, especificaciones, CAPA, auditorias,
-reclamos, reportes, indicadores y documentos QMS. Esto provoca:
-
-- busquedas manuales lentas antes de tomar decisiones;
-- dificultad para conectar reclamos, causas raiz, CAPA y auditorias;
-- uso de documentos obsoletos o no aplicables;
-- perdida de conocimiento entre plantas, turnos o equipos;
-- preparacion reactiva ante auditorias;
-- decisiones operativas con evidencia incompleta;
-- alto tiempo invertido por ingenieros, coordinadores y gerentes en rastrear
-  informacion documental.
-
-### Propuesta de valor
-
-El **Quality Intelligence Assistant** centraliza la inteligencia documental del
-sistema de calidad y permite consultar evidencia tecnica con contexto operativo:
-planta, proceso, producto, cliente, auditoria, tipo documental y fecha.
-
-No reemplaza al responsable de calidad ni aprueba decisiones de forma automatica.
-Su valor es acelerar el analisis, mostrar evidencia trazable y reducir el riesgo
-de decisiones sin soporte documental.
-
-### Usuarios objetivo
-
-- Gerentes de calidad y operaciones.
-- Ingenieros de calidad, proceso y mejora continua.
-- Lideres Lean Six Sigma.
-- Auditores internos.
-- Responsables CAPA.
-- Equipos de manufactura, supply chain y servicio al cliente.
-- Analistas de QMS y documentacion.
-
-### Casos de uso empresariales
-
-- Preparacion de auditorias con evidencia por proceso, planta y requisito.
-- Investigacion de reclamos conectando especificaciones, historial y CAPA.
-- Analisis de recurrencia de no conformidades o hallazgos.
-- Consulta rapida de SOPs vigentes y registros requeridos.
-- Revision de riesgos antes de cambios de proceso o producto.
-- Transferencia de lecciones aprendidas entre plantas.
-- Soporte documental para proyectos DMAIC.
-- Analisis de indicadores operativos con contexto de eventos de calidad.
-
-### Impacto esperado
-
-- Menor tiempo de busqueda documental.
-- Mejor trazabilidad entre decision, evidencia y fuente.
-- Mayor reutilizacion de conocimiento tecnico.
-- Preparacion mas ordenada para auditorias.
-- Reduccion de respuestas inconsistentes entre areas o plantas.
-- Identificacion mas rapida de brechas documentales.
-- Mejor soporte para priorizar CAPA, acciones preventivas y proyectos de mejora.
-
-### Indicadores para medir valor
-
-- Tiempo promedio para encontrar evidencia documental.
-- Porcentaje de respuestas con cita valida por pagina/documento.
-- Reduccion de hallazgos por falta de evidencia o documento incorrecto.
-- Tiempo de preparacion de auditoria.
-- Reutilizacion de CAPA/lecciones aprendidas en nuevos eventos.
-- Porcentaje de consultas filtradas por planta, proceso, producto o cliente.
-- Numero de brechas documentales detectadas antes de auditorias.
-
-## Preguntas tipo
-
-Estas preguntas muestran el tipo de interaccion esperada. El objetivo es obtener
-respuestas basadas en evidencia, no opiniones genericas.
-
-### SOPs y procedimientos
-
-- Que procedimiento aplica para liberar este producto en esta planta?
-- Que evidencias exige el SOP para cerrar esta etapa?
-- Que registros son obligatorios segun el procedimiento?
-- Quien es responsable de aprobar o ejecutar esta actividad?
-- Que pasos del procedimiento impactan directamente al cliente?
-- Hay diferencias entre el SOP actual y una revision anterior?
-- Que controles se deben verificar antes de iniciar produccion?
-
-### CAPA, causa raiz y recurrencia
-
-- Que CAPA anteriores tuvieron una causa raiz parecida?
-- Que acciones correctivas se usaron antes para este mismo defecto?
-- Que evidencia existe de que la accion fue efectiva?
-- Esta causa raiz relacionada con algun hallazgo de auditoria?
-- Hay recurrencia por proceso, producto, cliente o planta?
-- Que brechas de informacion impiden cerrar esta CAPA?
-
-### Auditorias y cumplimiento
-
-- Que hallazgos de auditoria se repiten por proceso?
-- Que documentos debo revisar antes de una auditoria externa?
-- Que evidencia necesito preparar para este requisito?
-- Que hallazgos abiertos afectan a esta planta?
-- Que procedimientos soportan este punto de la auditoria?
-- Existe evidencia documental suficiente para demostrar cumplimiento?
-
-### Reclamos de cliente
-
-- Que especificacion del cliente define el criterio de aceptacion?
-- Que reclamos similares se han recibido para este producto?
-- Que CAPA o acciones se relacionan con este reclamo?
-- Que lote, producto, proceso o planta aparece relacionado en la evidencia?
-- Que respuesta tecnica puede sustentarse con documentos existentes?
-- Que informacion falta antes de responder al cliente?
-
-### Especificaciones y liberacion
-
-- Cual es el criterio de aceptacion aplicable?
-- Que especificacion vigente aplica a este producto y cliente?
-- Que tolerancias o limites deben verificarse?
-- Que documentos soportan la decision de aceptar o rechazar un lote?
-- Hay conflicto entre especificacion interna y requerimiento de cliente?
-- Que controles del proceso estan asociados a esta especificacion?
-
-### Riesgo y decisiones operativas
-
-- Que riesgos aparecen si cambio este parametro de proceso?
-- Que impacto potencial existe para cliente, producto, proceso o compliance?
-- Que evidencia soporta una decision de contencion?
-- Que decision recomendada se puede tomar con la evidencia disponible?
-- Que documentos estan vencidos, incompletos o sin aprobacion?
-- Que brechas de informacion impiden responder con confianza?
-
-### DMAIC, mejora continua e indicadores
-
-- Que proyectos DMAIC han tratado un problema similar?
-- Que causas potenciales se identificaron en proyectos anteriores?
-- Que controles quedaron como parte del plan de control?
-- Que indicadores muestran deterioro en este proceso?
-- Que eventos de calidad coinciden con cambios en el KPI?
-- Que lecciones aprendidas aplican a este nuevo proyecto?
 
 ## Buenas practicas de uso
 
