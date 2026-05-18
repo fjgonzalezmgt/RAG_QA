@@ -1,21 +1,45 @@
-Creative Commons Attribution-ShareAlike 4.0 International
-(CC BY-SA 4.0)
+Quality Analytics Source-Available Demo License
 
-This work is licensed under the Creative Commons Attribution-ShareAlike 4.0 International License.
-To view a copy of this license, visit https://creativecommons.org/licenses/by-sa/4.0/ or send a letter to:
+Copyright (c) 2026 Francisco Gonzalez / Quality Analytics.
+All rights reserved.
 
-Creative Commons,
-PO Box 1866,
-Mountain View, CA 94042, USA.
+This repository is made publicly available only for portfolio review,
+demonstration, evaluation, and discussion purposes.
 
-You are free to:
-- Share — copy and redistribute the material in any medium or format.
-- Adapt — remix, transform, and build upon the material for any purpose, even commercially.
+Permission is granted to view the source code and documentation in this
+repository for the limited purpose of evaluating the project as a public demo.
 
-Under the following terms:
-- Attribution — You must give appropriate credit, provide a link to the license, and indicate if changes were made.
-- ShareAlike — If you remix, transform, or build upon the material, you must distribute your contributions under the same license as the original.
+No other rights are granted.
 
-No additional restrictions — You may not apply legal terms or technological measures that legally restrict others from doing anything the license permits.
+Without prior written permission from the copyright holder, you may not:
 
-Disclaimer: The license may not give you all of the permissions necessary for your intended use. For full legal terms, see the license at https://creativecommons.org/licenses/by-sa/4.0/.
+- use this software or any part of it in production, commercial, internal
+  business, consulting, academic, training, or operational environments;
+- copy, modify, adapt, translate, merge, publish, distribute, sublicense,
+  sell, rent, lease, host, deploy, or make the software available as a service;
+- create derivative works based on this software;
+- incorporate this software, in whole or in part, into another product,
+  service, repository, platform, workflow, or commercial offering;
+- use this software to provide services to third parties;
+- remove or alter copyright, license, attribution, or ownership notices.
+
+Commercial use, internal business use, modification, redistribution, hosted use,
+SaaS use, consulting use, training use, or incorporation into another product
+requires a separate paid commercial license.
+
+To request a commercial license or written permission, contact:
+
+Francisco Gonzalez / Quality Analytics
+
+This software is provided "as is", without warranty of any kind, express or
+implied, including but not limited to warranties of merchantability, fitness for
+a particular purpose, non-infringement, accuracy, availability, or suitability
+for regulated, quality, manufacturing, compliance, or operational decisions.
+
+In no event shall the copyright holder be liable for any claim, damages, losses,
+business interruption, data loss, compliance failure, quality issue, production
+issue, or other liability arising from, out of, or in connection with this
+software or the use of this repository.
+
+This license does not grant trademark, trade name, branding, logo, or commercial
+identity rights related to Francisco Gonzalez or Quality Analytics.

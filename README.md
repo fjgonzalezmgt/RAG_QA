@@ -507,6 +507,16 @@ roadmap, riesgos tecnicos y buenas practicas de embeddings/chunking.
 
 ## Licencia
 
-Este proyecto se distribuye bajo la licencia Creative Commons
-Attribution-ShareAlike 4.0 International (CC BY-SA 4.0). Consulta
-`LICENSE.md` para los terminos completos.
+Este repositorio es publico solo como demo, portafolio y material de evaluacion.
+El codigo es **source-available**, pero no es open source.
+
+No se concede permiso para usar, copiar, modificar, distribuir, desplegar,
+revender, alojar, convertir en SaaS, incorporar en otro producto ni usar este
+software en entornos comerciales, internos, de consultoria, capacitacion u
+operacion sin autorizacion escrita previa.
+
+El uso comercial, modificacion, redistribucion, despliegue, uso interno de
+negocio, consultoria, capacitacion o incorporacion en otro producto requiere una
+licencia comercial pagada.
+
+Consulta `LICENSE.md` para los terminos completos.
