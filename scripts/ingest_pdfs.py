@@ -15,9 +15,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
-from rag_books.config import get_settings
-from rag_books.ingest import PDFIngestor
-from rag_books.logging import setup_logging
+from quality_intelligence.config import get_settings
+from quality_intelligence.ingest import PDFIngestor
+from quality_intelligence.logging import setup_logging
 
 
 def parse_args() -> argparse.Namespace:
@@ -31,7 +31,7 @@ def parse_args() -> argparse.Namespace:
 
     parser = argparse.ArgumentParser(description="Ingest root-level PDFs into PostgreSQL/pgvector.")
     parser.add_argument("--pdf-dir", type=Path, help="Directory containing PDFs in its root.")
-    parser.add_argument("--domain", help="Logical domain, for example literatura or sistemas_gestion.")
+    parser.add_argument("--domain", help="Logical domain, for example quality_intelligence.")
     parser.add_argument("--force", action="store_true", help="Replace indexed chunks for each source path.")
     return parser.parse_args()
 

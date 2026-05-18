@@ -224,7 +224,7 @@ flowchart LR
 
 Flujo de trabajo:
 
-1. El usuario coloca documentos tecnicos en `quality_docs/`.
+1. El usuario coloca documentos tecnicos en `quality_knowledge_base/`.
 2. La ingesta extrae texto, calcula hash, infiere metadata y genera chunks.
 3. Los chunks se convierten en embeddings y se guardan en pgvector.
 4. El usuario consulta usando filtros operativos.
@@ -235,25 +235,25 @@ Flujo de trabajo:
 ## Estructura del proyecto
 
 - `app.py`: interfaz Streamlit del Quality Intelligence Assistant.
-- `quality_docs/`: carpeta recomendada para documentos tecnicos a ingerir.
+- `quality_knowledge_base/`: carpeta recomendada para documentos tecnicos a ingerir.
 - `scripts/ingest_pdfs.py`: ingesta batch de PDFs.
 - `scripts/init_quality_schema.py`: inicializa el esquema profesional QMS.
 - `sql/001_quality_intelligence_schema.sql`: migracion PostgreSQL extendida.
 - `docs/quality_intelligence_architecture.md`: arquitectura funcional completa,
   metadata, retrieval, roadmap, riesgos y buenas practicas.
-- `src/rag_books/config.py`: configuracion desde `.env`.
-- `src/rag_books/db.py`: persistencia PostgreSQL, pgvector, indices, filtros y
+- `src/quality_intelligence/config.py`: configuracion desde `.env`.
+- `src/quality_intelligence/db.py`: persistencia PostgreSQL, pgvector, indices, filtros y
   busqueda semantica.
-- `src/rag_books/ingest.py`: pipeline de ingesta.
-- `src/rag_books/quality_metadata.py`: inferencia de metadata QMS desde nombres
+- `src/quality_intelligence/ingest.py`: pipeline de ingesta.
+- `src/quality_intelligence/quality_metadata.py`: inferencia de metadata QMS desde nombres
   de archivo.
-- `src/rag_books/retriever.py`: retrieval y etiquetado de fuentes.
-- `src/rag_books/llm.py`: prompt final y llamada al modelo.
-- `src/rag_books/domain_profiles.py`: perfiles de dominio, incluyendo
+- `src/quality_intelligence/retriever.py`: retrieval y etiquetado de fuentes.
+- `src/quality_intelligence/llm.py`: prompt final y llamada al modelo.
+- `src/quality_intelligence/domain_profiles.py`: perfiles de dominio, incluyendo
   `quality_intelligence`.
-- `src/rag_books/pdf_loader.py`: lectura y hashing de PDFs.
-- `src/rag_books/text_splitter.py`: chunking con rango de paginas.
-- `src/rag_books/embeddings.py`: cliente de embeddings OpenAI.
+- `src/quality_intelligence/pdf_loader.py`: lectura y hashing de PDFs.
+- `src/quality_intelligence/text_splitter.py`: chunking con rango de paginas.
+- `src/quality_intelligence/embeddings.py`: cliente de embeddings OpenAI.
 
 ## Modelo de datos
 
@@ -341,7 +341,7 @@ Metadata por chunk:
 ## Convencion de nombres para demo
 
 Para que la metadata inicial funcione sin cargar un maestro externo, coloca los
-PDFs en `quality_docs/` con esta convencion:
+PDFs en `quality_knowledge_base/` con esta convencion:
 
 ```text
 <document_type>__<plant>__<process>__<product-or-customer>__<code>__rev-<revision>.pdf
@@ -368,7 +368,7 @@ Valores principales:
 ```text
 DB_NAME=RAG_DB
 RAG_DOMAIN=quality_intelligence
-RAG_PDF_DIR=./quality_docs
+RAG_PDF_DIR=./quality_knowledge_base
 OPENAI_CHAT_MODEL=gpt-5.5
 OPENAI_EMBEDDING_MODEL=text-embedding-3-large
 OPENAI_EMBEDDING_DIM=2000
@@ -394,7 +394,7 @@ Crear y activar el entorno:
 
 ```powershell
 conda env create -f environment.yml
-conda activate rag-books
+conda activate quality-intelligence
 ```
 
 Tambien puedes usar `requirements.txt` con `pip` si prefieres otro entorno.
@@ -413,13 +413,13 @@ CREATE DATABASE "RAG_DB";
 Luego aplica el esquema profesional:
 
 ```powershell
-conda run -n rag-books python scripts\init_quality_schema.py --db-name RAG_DB
+conda run -n quality-intelligence python scripts\init_quality_schema.py --db-name RAG_DB
 ```
 
 Si el usuario tiene permiso para crear bases:
 
 ```powershell
-conda run -n rag-books python scripts\init_quality_schema.py --db-name RAG_DB --create-db
+conda run -n quality-intelligence python scripts\init_quality_schema.py --db-name RAG_DB --create-db
 ```
 
 Desde Streamlit puedes usar **Inicializar BD** para preparar el indice
@@ -429,16 +429,16 @@ indicadores y decisiones.
 
 ## Ingestar documentos
 
-Coloca PDFs en `quality_docs/` y ejecuta:
+Coloca PDFs en `quality_knowledge_base/` y ejecuta:
 
 ```powershell
-conda run -n rag-books python scripts\ingest_pdfs.py --pdf-dir .\quality_docs --domain quality_intelligence
+conda run -n quality-intelligence python scripts\ingest_pdfs.py --pdf-dir .\quality_knowledge_base --domain quality_intelligence
 ```
 
 Para reemplazar chunks de archivos ya indexados:
 
 ```powershell
-conda run -n rag-books python scripts\ingest_pdfs.py --pdf-dir .\quality_docs --domain quality_intelligence --force
+conda run -n quality-intelligence python scripts\ingest_pdfs.py --pdf-dir .\quality_knowledge_base --domain quality_intelligence --force
 ```
 
 Tambien puedes usar el boton **Ingerir PDFs** desde Streamlit.
@@ -446,7 +446,7 @@ Tambien puedes usar el boton **Ingerir PDFs** desde Streamlit.
 ## Ejecutar Streamlit
 
 ```powershell
-conda run -n rag-books streamlit run app.py --server.port 8501
+conda run -n quality-intelligence streamlit run app.py --server.port 8501
 ```
 
 O ejecuta `run_app.bat` en Windows.

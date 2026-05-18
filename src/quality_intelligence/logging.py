@@ -42,7 +42,7 @@ def setup_logging(project_root: Path, level: str = "INFO") -> None:
         ),
     )
     logger.add(
-        log_dir / "rag_books.log",
+        log_dir / "quality_intelligence.log",
         level="DEBUG",
         rotation="5 MB",
         retention="10 days",
@@ -51,4 +51,4 @@ def setup_logging(project_root: Path, level: str = "INFO") -> None:
     )
 
     _CONFIGURED = True
-    logger.info("Logging initialized. Log file: {}", log_dir / "rag_books.log")
+    logger.info("Logging initialized. Log file: {}", log_dir / "quality_intelligence.log")

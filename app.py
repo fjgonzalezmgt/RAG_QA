@@ -1,4 +1,4 @@
-"""Streamlit interface for the RAG Books application.
+"""Streamlit interface for the Quality Intelligence Assistant.
 
 The UI exposes configuration controls, PDF ingestion actions, indexed-document
 inspection, OpenAI connectivity checks, and a chat interface with short-term
@@ -17,15 +17,15 @@ from loguru import logger
 ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT / "src"))
 
-from rag_books.config import get_settings
-from rag_books.db import VectorStore, validate_identifier
-from rag_books.domain_profiles import PROFILES, get_profile
-from rag_books.embeddings import EmbeddingClient
-from rag_books.ingest import PDFIngestor
-from rag_books.llm import LLMClient
-from rag_books.logging import setup_logging
-from rag_books.openai_health import check_openai_connection
-from rag_books.retriever import RAGRetriever
+from quality_intelligence.config import get_settings
+from quality_intelligence.db import VectorStore, validate_identifier
+from quality_intelligence.domain_profiles import PROFILES, get_profile
+from quality_intelligence.embeddings import EmbeddingClient
+from quality_intelligence.ingest import PDFIngestor
+from quality_intelligence.llm import LLMClient
+from quality_intelligence.logging import setup_logging
+from quality_intelligence.openai_health import check_openai_connection
+from quality_intelligence.retriever import RAGRetriever
 
 
 def _active_filters(raw_filters: dict[str, object]) -> dict[str, str]:
@@ -201,7 +201,7 @@ except ValueError:
     logger.error("Invalid domain/schema identifier: '{}'.", settings.rag.domain)
     st.error(
         "El dominio tambien se usa como esquema PostgreSQL. Usa un identificador SQL valido, "
-        "por ejemplo `literatura` o `sistemas_gestion`."
+        "por ejemplo `quality_intelligence`."
     )
     st.stop()
 

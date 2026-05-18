@@ -1,4 +1,4 @@
-# Quality document repository
+# Quality Knowledge Base
 
 Place SOPs, procedures, CAPA reports, audits, complaints, specifications,
 quality reports, lessons learned, DMAIC projects, KPI reports, and QMS

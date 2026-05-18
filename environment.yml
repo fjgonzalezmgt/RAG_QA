@@ -1,4 +1,4 @@
-name: rag-books
+name: quality-intelligence
 channels:
   - conda-forge
 dependencies:

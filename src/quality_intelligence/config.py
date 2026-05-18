@@ -277,8 +277,8 @@ def get_settings() -> Settings:
             verbosity=os.getenv("OPENAI_VERBOSITY", "high"),
         ),
         rag=RagSettings(
-            domain=os.getenv("RAG_DOMAIN", "literatura"),
-            pdf_dir=(PROJECT_ROOT / os.getenv("RAG_PDF_DIR", "./books")).resolve(),
+            domain=os.getenv("RAG_DOMAIN", "quality_intelligence"),
+            pdf_dir=(PROJECT_ROOT / os.getenv("RAG_PDF_DIR", "./quality_knowledge_base")).resolve(),
             chunk_size=_int_env("RAG_CHUNK_SIZE", 1800),
             chunk_overlap=_int_env("RAG_CHUNK_OVERLAP", 220),
             top_k=_int_env("RAG_TOP_K", 18),

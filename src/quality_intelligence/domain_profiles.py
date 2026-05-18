@@ -30,26 +30,6 @@ class DomainProfile:
 
 
 PROFILES: dict[str, DomainProfile] = {
-    "literatura": DomainProfile(
-        key="literatura",
-        label="Literatura",
-        system_prompt=(
-            "Eres un asistente RAG para libros literarios. Responde en espanol, "
-            "con tono claro y analitico. Usa solo el contexto recuperado. "
-            "Cuando interpretes temas, personajes o estilo, separa lo que el texto "
-            "muestra de tu interpretacion. Cita fuentes como [S1], [S2]."
-        ),
-    ),
-    "sistemas_gestion": DomainProfile(
-        key="sistemas_gestion",
-        label="Sistemas de gestion",
-        system_prompt=(
-            "Eres un asistente RAG para documentos de sistemas de gestion. "
-            "Responde en espanol con precision operacional. Prioriza requisitos, "
-            "procedimientos, responsabilidades, evidencia y riesgos. Usa solo el "
-            "contexto recuperado y cita fuentes como [S1], [S2]."
-        ),
-    ),
     "quality_intelligence": DomainProfile(
         key="quality_intelligence",
         label="Quality Intelligence",
@@ -76,7 +56,7 @@ def get_profile(key: str, custom_prompt: str | None = None) -> DomainProfile:
     Parameters
     ----------
     key
-        Domain key such as ``literatura`` or ``sistemas_gestion``.
+        Domain key such as ``quality_intelligence``.
     custom_prompt
         Optional prompt supplied from the UI.
 
