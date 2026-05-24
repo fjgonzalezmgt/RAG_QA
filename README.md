@@ -178,7 +178,8 @@ respuestas basadas en evidencia, no opiniones genericas.
 - Chunking con solape configurable y conservacion de `page_start` / `page_end`.
 - Embeddings OpenAI almacenados en PostgreSQL + pgvector.
 - Perfil especializado `quality_intelligence` para respuestas en contexto de
-  calidad, manufactura, mejora continua y QMS.
+  calidad, manufactura, mejora continua y QMS. La UI esta fijada a este dominio
+  para evitar mezclar esquemas o perfiles no validados.
 - Filtros operativos en Streamlit:
   - planta / sitio
   - proceso / area
@@ -423,7 +424,8 @@ Variables de base de datos:
 
 Variables RAG:
 
-- `RAG_DOMAIN`: esquema/dominio PostgreSQL.
+- `RAG_DOMAIN`: esquema/dominio PostgreSQL. La UI fuerza
+  `quality_intelligence`; esta variable queda para scripts o compatibilidad.
 - `RAG_PDF_DIR`: carpeta raiz con PDFs.
 - `RAG_CHUNK_SIZE` y `RAG_CHUNK_OVERLAP`.
 - `RAG_TOP_K`, `RAG_CANDIDATE_K`, `RAG_MAX_CHUNKS_PER_DOCUMENT`.
@@ -512,7 +514,7 @@ O ejecuta `run_app.bat` en Windows.
 
 La interfaz incluye:
 
-- configuracion de dominio y carpeta documental;
+- configuracion de carpeta documental;
 - controles de chunking, retrieval y enriquecimiento de metadata con LLM;
 - prueba de conexion con OpenAI;
 - filtros operativos y toggle para incluir documentos obsoletos;

@@ -20,13 +20,16 @@ sys.path.insert(0, str(ROOT / "src"))
 
 from quality_intelligence.config import get_settings
 from quality_intelligence.db import VectorStore, validate_identifier
-from quality_intelligence.domain_profiles import PROFILES, get_profile
+from quality_intelligence.domain_profiles import get_profile
 from quality_intelligence.embeddings import EmbeddingClient
 from quality_intelligence.ingest import PDFIngestor
 from quality_intelligence.llm import LLMClient
 from quality_intelligence.logging import setup_logging
 from quality_intelligence.openai_health import check_openai_connection
 from quality_intelligence.retriever import RAGRetriever
+
+
+QUALITY_INTELLIGENCE_DOMAIN = "quality_intelligence"
 
 
 QUERY_MODES: dict[str, dict[str, str]] = {
@@ -311,6 +314,8 @@ st.title("Quality Intelligence Assistant")
 st.caption("Inteligencia documental para calidad, operaciones, Lean Six Sigma y QMS basada en evidencia.")
 
 base_settings = get_settings()
+if base_settings.rag.domain != QUALITY_INTELLIGENCE_DOMAIN:
+    base_settings = replace(base_settings, rag=replace(base_settings.rag, domain=QUALITY_INTELLIGENCE_DOMAIN))
 logger.info(
     "Settings loaded: db_host='{}', db_name='{}', domain='{}', pdf_dir='{}', chat_model='{}', embedding_model='{}'.",
     base_settings.db.host,
@@ -335,38 +340,8 @@ with st.sidebar:
         value=str(base_settings.rag.pdf_dir),
         help="Carpeta donde se buscan PDFs para ingesta.",
     )
-
-    profile_keys = list(PROFILES.keys()) + ["custom"]
-    default_index = (
-        profile_keys.index(base_settings.rag.domain)
-        if base_settings.rag.domain in profile_keys
-        else profile_keys.index("custom")
-    )
-    profile_key = st.selectbox(
-        "Dominio",
-        profile_keys,
-        index=default_index,
-        format_func=lambda key: PROFILES[key].label if key in PROFILES else "Personalizado",
-        help="Perfil de dominio usado para prompt, esquema y comportamiento RAG.",
-    )
-
-    if profile_key == "custom":
-        domain = st.text_input(
-            "Clave del dominio",
-            value=base_settings.rag.domain,
-            help="Tambien se usa como esquema PostgreSQL; usa solo letras, numeros y guion bajo.",
-        )
-        custom_prompt = st.text_area(
-            "Prompt del dominio",
-            value=(
-                "Eres un asistente RAG especializado. Responde en espanol, "
-                "usa solo el contexto recuperado y cita fuentes como [S1], [S2]."
-            ),
-            height=140,
-        )
-    else:
-        domain = profile_key
-        custom_prompt = None
+    st.info("Dominio fijo: Quality Intelligence")
+    domain = QUALITY_INTELLIGENCE_DOMAIN
 
     top_k = st.slider(
         "Evidencias recuperadas",
@@ -491,7 +466,7 @@ with st.sidebar:
 rag_settings = replace(
     base_settings.rag,
     pdf_dir=Path(pdf_dir).expanduser().resolve(),
-    domain=domain,
+    domain=QUALITY_INTELLIGENCE_DOMAIN,
     top_k=int(top_k),
     candidate_k=int(candidate_k),
     max_chunks_per_document=int(max_chunks_per_document),
@@ -531,7 +506,7 @@ store = VectorStore(settings.db, settings.rag.domain, settings.openai.embedding_
 embedding_client = EmbeddingClient(settings.openai)
 retriever = RAGRetriever(store, embedding_client)
 llm_client = LLMClient(settings.openai)
-profile = get_profile(settings.rag.domain, custom_prompt=custom_prompt)
+profile = get_profile(settings.rag.domain)
 logger.info("Runtime components initialized for schema/domain '{}'.", settings.rag.domain)
 
 left, right = st.columns([0.36, 0.64], gap="large")
