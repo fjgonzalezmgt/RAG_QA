@@ -8,8 +8,11 @@ ingestion and citation.
 from __future__ import annotations
 
 import hashlib
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
+
+import subprocess
 
 from loguru import logger
 from pypdf import PdfReader
@@ -77,7 +80,7 @@ def file_sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
-def load_pdf(path: Path) -> PdfDocument:
+def load_pdf(path: Path, ocr_fallback: bool = False) -> PdfDocument:
     """Load a PDF and extract text page by page.
 
     Parameters
@@ -100,6 +103,13 @@ def load_pdf(path: Path) -> PdfDocument:
         text = page.extract_text() or ""
         pages.append(PageText(page_number=index, text=text))
 
+    if ocr_fallback and not any(page.text.strip() for page in pages):
+        ocr_text = extract_text_with_pdftotext(path)
+        if not ocr_text:
+            ocr_text = extract_text_with_ocrmypdf(path)
+        if ocr_text:
+            pages = [PageText(page_number=index, text=text) for index, text in enumerate(split_pdftotext_pages(ocr_text), start=1)]
+
     title = _clean_metadata_value(metadata.get("/Title")) if metadata else None
     author = _clean_metadata_value(metadata.get("/Author")) if metadata else None
 
@@ -119,7 +129,7 @@ def load_pdf(path: Path) -> PdfDocument:
     return document
 
 
-def list_pdfs(pdf_dir: Path) -> list[Path]:
+def list_pdfs(pdf_dir: Path, recursive: bool = True) -> list[Path]:
     """List root-level PDF files in a directory.
 
     Parameters
@@ -138,9 +148,59 @@ def list_pdfs(pdf_dir: Path) -> list[Path]:
         raise FileNotFoundError(f"PDF directory does not exist: {pdf_dir}")
     if not pdf_dir.is_dir():
         raise NotADirectoryError(f"PDF path is not a directory: {pdf_dir}")
-    pdfs = sorted(path for path in pdf_dir.glob("*.pdf") if path.is_file())
+    pattern = "**/*.pdf" if recursive else "*.pdf"
+    pdfs = sorted(path for path in pdf_dir.glob(pattern) if path.is_file())
     logger.info("PDF listing finished. count={}.", len(pdfs))
     return pdfs
+
+
+def extract_text_with_pdftotext(path: Path) -> str:
+    """Try Poppler's pdftotext as a pragmatic fallback for difficult PDFs."""
+
+    try:
+        completed = subprocess.run(
+            ["pdftotext", "-layout", str(path), "-"],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        logger.warning("pdftotext fallback unavailable for '{}': {}", path.name, exc)
+        return ""
+    if completed.returncode != 0:
+        logger.warning("pdftotext fallback failed for '{}': {}", path.name, completed.stderr.strip())
+        return ""
+    return completed.stdout or ""
+
+
+def extract_text_with_ocrmypdf(path: Path) -> str:
+    """Run optional OCR through ocrmypdf when the command is installed."""
+
+    with tempfile.TemporaryDirectory(prefix="quality_ocr_") as temp_dir:
+        output_path = Path(temp_dir) / "ocr.pdf"
+        try:
+            ocr_completed = subprocess.run(
+                ["ocrmypdf", "--skip-text", "--quiet", str(path), str(output_path)],
+                check=False,
+                capture_output=True,
+                text=True,
+                timeout=300,
+            )
+        except (OSError, subprocess.SubprocessError) as exc:
+            logger.warning("ocrmypdf fallback unavailable for '{}': {}", path.name, exc)
+            return ""
+        if ocr_completed.returncode != 0 or not output_path.exists():
+            logger.warning("ocrmypdf fallback failed for '{}': {}", path.name, ocr_completed.stderr.strip())
+            return ""
+        return extract_text_with_pdftotext(output_path)
+
+
+def split_pdftotext_pages(text: str) -> list[str]:
+    """Split pdftotext output into page-sized strings when form feeds exist."""
+
+    pages = [page.strip() for page in text.split("\f")]
+    return [page for page in pages if page]
 
 
 def _clean_metadata_value(value: object) -> str | None:

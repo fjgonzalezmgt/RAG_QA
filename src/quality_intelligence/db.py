@@ -35,6 +35,20 @@ QUALITY_FILTER_ALIASES: dict[str, tuple[str, ...]] = {
     "audit": ("audit", "audit_id", "audit_code"),
 }
 
+DOCUMENT_TYPE_LABELS: dict[str, str] = {
+    "SOP": "SOP",
+    "PROCEDURE": "Procedure",
+    "CAPA": "CAPA",
+    "AUDIT": "Audit",
+    "COMPLAINT": "Complaint",
+    "SPECIFICATION": "Specification",
+    "QUALITY_REPORT": "Quality report",
+    "LESSON_LEARNED": "Lesson learned",
+    "DMAIC": "DMAIC project",
+    "KPI": "Operational indicator",
+    "QMS": "QMS document",
+}
+
 
 @dataclass(frozen=True)
 class SearchResult:
@@ -146,6 +160,11 @@ class VectorStore:
         """Create extension schema, domain schema, and base RAG tables."""
 
         schema = qident(self.schema)
+        document_types = qname(self.schema, "document_types")
+        plants = qname(self.schema, "plants")
+        processes = qname(self.schema, "processes")
+        products = qname(self.schema, "products")
+        customers = qname(self.schema, "customers")
         documents = qname(self.schema, "documents")
         chunks = qname(self.schema, "chunks")
         vector_type = qname(self.extensions_schema, "vector")
@@ -157,6 +176,62 @@ class VectorStore:
                 cur.execute(f"CREATE SCHEMA IF NOT EXISTS {schema}")
                 cur.execute(
                     f"""
+                    CREATE TABLE IF NOT EXISTS {document_types} (
+                        code TEXT PRIMARY KEY,
+                        label TEXT NOT NULL,
+                        description TEXT,
+                        retention_class TEXT,
+                        default_risk_level TEXT,
+                        created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+                    )
+                    """
+                )
+                cur.executemany(
+                    f"""
+                    INSERT INTO {document_types} (code, label)
+                    VALUES (%s, %s)
+                    ON CONFLICT (code) DO UPDATE SET label = EXCLUDED.label
+                    """,
+                    sorted(DOCUMENT_TYPE_LABELS.items()),
+                )
+                cur.execute(
+                    f"""
+                    CREATE TABLE IF NOT EXISTS {plants} (
+                        plant_code TEXT PRIMARY KEY,
+                        plant_name TEXT NOT NULL,
+                        metadata JSONB NOT NULL DEFAULT '{{}}'::jsonb
+                    )
+                    """
+                )
+                cur.execute(
+                    f"""
+                    CREATE TABLE IF NOT EXISTS {processes} (
+                        process_code TEXT PRIMARY KEY,
+                        process_name TEXT NOT NULL,
+                        metadata JSONB NOT NULL DEFAULT '{{}}'::jsonb
+                    )
+                    """
+                )
+                cur.execute(
+                    f"""
+                    CREATE TABLE IF NOT EXISTS {products} (
+                        product_code TEXT PRIMARY KEY,
+                        product_name TEXT,
+                        metadata JSONB NOT NULL DEFAULT '{{}}'::jsonb
+                    )
+                    """
+                )
+                cur.execute(
+                    f"""
+                    CREATE TABLE IF NOT EXISTS {customers} (
+                        customer_code TEXT PRIMARY KEY,
+                        customer_name TEXT NOT NULL,
+                        metadata JSONB NOT NULL DEFAULT '{{}}'::jsonb
+                    )
+                    """
+                )
+                cur.execute(
+                    f"""
                     CREATE TABLE IF NOT EXISTS {documents} (
                         id UUID PRIMARY KEY,
                         domain TEXT NOT NULL,
@@ -166,11 +241,35 @@ class VectorStore:
                         author TEXT,
                         content_hash TEXT NOT NULL,
                         metadata JSONB NOT NULL DEFAULT '{{}}'::jsonb,
+                        is_current BOOLEAN NOT NULL DEFAULT TRUE,
+                        supersedes_document_id UUID,
                         created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+                        document_code TEXT,
+                        document_type_code TEXT,
+                        revision TEXT,
+                        lifecycle_status TEXT,
+                        document_date DATE,
+                        effective_date DATE,
+                        review_due_date DATE,
+                        owner_area TEXT,
+                        plant_code TEXT,
+                        process_code TEXT,
+                        product_code TEXT,
+                        customer_code TEXT,
+                        qms_process TEXT,
+                        source_system TEXT,
+                        source_record_id TEXT,
+                        confidentiality_level TEXT,
+                        risk_level TEXT,
+                        approval_status TEXT,
+                        approved_by TEXT,
+                        approved_at TIMESTAMPTZ,
                         UNIQUE (domain, source_path, content_hash)
                     )
                     """
                 )
+                for column_sql in document_compatibility_columns():
+                    cur.execute(f"ALTER TABLE {documents} ADD COLUMN IF NOT EXISTS {column_sql}")
                 cur.execute(
                     f"""
                     CREATE TABLE IF NOT EXISTS {chunks} (
@@ -185,13 +284,95 @@ class VectorStore:
                         embedding {vector_type}({self.embedding_dim}),
                         metadata JSONB NOT NULL DEFAULT '{{}}'::jsonb,
                         created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+                        section_title TEXT,
+                        section_number TEXT,
+                        clause_ref TEXT,
+                        requirement_type TEXT,
+                        process_step TEXT,
+                        risk_signal TEXT,
+                        key_terms TEXT[],
+                        detected_entities JSONB NOT NULL DEFAULT '{{}}'::jsonb,
                         UNIQUE (document_id, chunk_index)
                     )
                     """
                 )
+                for column_sql in chunk_compatibility_columns():
+                    cur.execute(f"ALTER TABLE {chunks} ADD COLUMN IF NOT EXISTS {column_sql}")
                 cur.execute(f"CREATE INDEX IF NOT EXISTS documents_domain_idx ON {documents} (domain)")
+                cur.execute(f"CREATE INDEX IF NOT EXISTS documents_current_idx ON {documents} (domain, is_current)")
+                cur.execute(f"CREATE INDEX IF NOT EXISTS documents_document_type_idx ON {documents} (document_type_code)")
+                cur.execute(f"CREATE INDEX IF NOT EXISTS documents_plant_process_idx ON {documents} (plant_code, process_code)")
+                cur.execute(f"CREATE INDEX IF NOT EXISTS documents_product_customer_idx ON {documents} (product_code, customer_code)")
+                cur.execute(f"CREATE INDEX IF NOT EXISTS documents_effective_date_idx ON {documents} (effective_date)")
+                cur.execute(f"CREATE INDEX IF NOT EXISTS documents_metadata_gin_idx ON {documents} USING gin (metadata)")
                 cur.execute(f"CREATE INDEX IF NOT EXISTS chunks_domain_idx ON {chunks} (domain)")
+                cur.execute(f"CREATE INDEX IF NOT EXISTS chunks_metadata_gin_idx ON {chunks} USING gin (metadata)")
+                self._create_audit_tables(cur)
             conn.commit()
+
+    def _create_audit_tables(self, cur) -> None:
+        """Create retrieval audit tables used by the Streamlit app."""
+
+        retrieval_sessions = qname(self.schema, "retrieval_sessions")
+        retrieval_evidence = qname(self.schema, "retrieval_evidence")
+        decision_records = qname(self.schema, "decision_records")
+        chunks = qname(self.schema, "chunks")
+        documents = qname(self.schema, "documents")
+
+        cur.execute(
+            f"""
+            CREATE TABLE IF NOT EXISTS {retrieval_sessions} (
+                id BIGSERIAL PRIMARY KEY,
+                question TEXT NOT NULL,
+                filters JSONB NOT NULL DEFAULT '{{}}'::jsonb,
+                prompt_profile TEXT,
+                top_k INTEGER,
+                answer TEXT,
+                decision_intent TEXT,
+                created_by TEXT,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+            )
+            """
+        )
+        cur.execute(
+            f"""
+            CREATE TABLE IF NOT EXISTS {retrieval_evidence} (
+                id BIGSERIAL PRIMARY KEY,
+                session_id BIGINT NOT NULL REFERENCES {retrieval_sessions}(id) ON DELETE CASCADE,
+                source_label TEXT NOT NULL,
+                chunk_id UUID REFERENCES {chunks}(id) ON DELETE SET NULL,
+                document_id UUID REFERENCES {documents}(id) ON DELETE SET NULL,
+                score NUMERIC,
+                page_start INTEGER,
+                page_end INTEGER,
+                evidence_role TEXT,
+                quote_excerpt TEXT,
+                metadata JSONB NOT NULL DEFAULT '{{}}'::jsonb,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+            )
+            """
+        )
+        cur.execute(
+            f"""
+            CREATE TABLE IF NOT EXISTS {decision_records} (
+                id BIGSERIAL PRIMARY KEY,
+                decision_code TEXT UNIQUE,
+                title TEXT NOT NULL,
+                decision_type TEXT,
+                decision_summary TEXT NOT NULL,
+                rationale TEXT,
+                risk_assessment TEXT,
+                owner_name TEXT,
+                status TEXT,
+                due_at DATE,
+                closed_at DATE,
+                retrieval_session_id BIGINT REFERENCES {retrieval_sessions}(id),
+                metadata JSONB NOT NULL DEFAULT '{{}}'::jsonb,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+            )
+            """
+        )
+        cur.execute(f"CREATE INDEX IF NOT EXISTS retrieval_sessions_created_at_idx ON {retrieval_sessions} (created_at DESC)")
 
     def find_document_id(self, domain: str, source_path: str, content_hash: str) -> str | None:
         """Find an already-indexed document.
@@ -257,6 +438,37 @@ class VectorStore:
         logger.info("Deleted {} document rows for source '{}'.", deleted, source_path)
         return deleted
 
+    def mark_source_superseded(self, domain: str, source_path: str) -> str | None:
+        """Mark current rows for one source path as no longer current."""
+
+        logger.info("Marking previous document versions as superseded. domain='{}', source_path='{}'.", domain, source_path)
+        documents = qname(self.schema, "documents")
+        with self.connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    f"""
+                    SELECT id::text AS id
+                    FROM {documents}
+                    WHERE domain = %s AND source_path = %s AND COALESCE(is_current, TRUE) IS TRUE
+                    ORDER BY created_at DESC
+                    LIMIT 1
+                    """,
+                    (domain, source_path),
+                )
+                row = cur.fetchone()
+                cur.execute(
+                    f"""
+                    UPDATE {documents}
+                    SET is_current = FALSE
+                    WHERE domain = %s AND source_path = %s AND COALESCE(is_current, TRUE) IS TRUE
+                    """,
+                    (domain, source_path),
+                )
+            conn.commit()
+        superseded_id = row["id"] if row else None
+        logger.info("Superseded current document id: {}.", superseded_id or "none")
+        return superseded_id
+
     def insert_document(
         self,
         domain: str,
@@ -293,18 +505,55 @@ class VectorStore:
         logger.info("Upserting document metadata. file='{}', domain='{}'.", file_name, domain)
         documents = qname(self.schema, "documents")
         document_id = str(uuid4())
+        typed = metadata_column_values(metadata)
+        self._ensure_dimension_values(metadata)
         with self.connect() as conn:
             with conn.cursor() as cur:
                 cur.execute(
                     f"""
                     INSERT INTO {documents}
-                        (id, domain, source_path, file_name, title, author, content_hash, metadata)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                        (
+                            id, domain, source_path, file_name, title, author, content_hash, metadata,
+                            is_current, supersedes_document_id, document_code, document_type_code,
+                            revision, lifecycle_status, document_date, effective_date, review_due_date,
+                            owner_area, plant_code, process_code, product_code, customer_code,
+                            qms_process, source_system, source_record_id, confidentiality_level,
+                            risk_level, approval_status, approved_by, approved_at
+                        )
+                    VALUES (
+                        %s, %s, %s, %s, %s, %s, %s, %s,
+                        TRUE, %s, %s, %s,
+                        %s, %s, %s::date, %s::date, %s::date,
+                        %s, %s, %s, %s, %s,
+                        %s, %s, %s, %s,
+                        %s, %s, %s, %s::timestamptz
+                    )
                     ON CONFLICT (domain, source_path, content_hash)
                     DO UPDATE SET
                         title = EXCLUDED.title,
                         author = EXCLUDED.author,
-                        metadata = EXCLUDED.metadata
+                        metadata = EXCLUDED.metadata,
+                        is_current = TRUE,
+                        document_code = EXCLUDED.document_code,
+                        document_type_code = EXCLUDED.document_type_code,
+                        revision = EXCLUDED.revision,
+                        lifecycle_status = EXCLUDED.lifecycle_status,
+                        document_date = EXCLUDED.document_date,
+                        effective_date = EXCLUDED.effective_date,
+                        review_due_date = EXCLUDED.review_due_date,
+                        owner_area = EXCLUDED.owner_area,
+                        plant_code = EXCLUDED.plant_code,
+                        process_code = EXCLUDED.process_code,
+                        product_code = EXCLUDED.product_code,
+                        customer_code = EXCLUDED.customer_code,
+                        qms_process = EXCLUDED.qms_process,
+                        source_system = EXCLUDED.source_system,
+                        source_record_id = EXCLUDED.source_record_id,
+                        confidentiality_level = EXCLUDED.confidentiality_level,
+                        risk_level = EXCLUDED.risk_level,
+                        approval_status = EXCLUDED.approval_status,
+                        approved_by = EXCLUDED.approved_by,
+                        approved_at = EXCLUDED.approved_at
                     RETURNING id::text AS id
                     """,
                     (
@@ -316,12 +565,59 @@ class VectorStore:
                         author,
                         content_hash,
                         Jsonb(metadata),
+                        typed["supersedes_document_id"],
+                        typed["document_code"],
+                        typed["document_type_code"],
+                        typed["revision"],
+                        typed["lifecycle_status"],
+                        typed["document_date"],
+                        typed["effective_date"],
+                        typed["review_due_date"],
+                        typed["owner_area"],
+                        typed["plant_code"],
+                        typed["process_code"],
+                        typed["product_code"],
+                        typed["customer_code"],
+                        typed["qms_process"],
+                        typed["source_system"],
+                        typed["source_record_id"],
+                        typed["confidentiality_level"],
+                        typed["risk_level"],
+                        typed["approval_status"],
+                        typed["approved_by"],
+                        typed["approved_at"],
                     ),
                 )
                 row = cur.fetchone()
             conn.commit()
         logger.debug("Document id ready: {}.", row["id"])
         return row["id"]
+
+    def _ensure_dimension_values(self, metadata: Mapping[str, object]) -> None:
+        """Upsert lightweight dimension rows before filling FK-backed columns."""
+
+        dimensions = [
+            ("plants", "plant_code", "plant_name", first_metadata_value(metadata, "plant_code", "plant")),
+            ("processes", "process_code", "process_name", first_metadata_value(metadata, "process_code", "process")),
+            ("products", "product_code", "product_name", first_metadata_value(metadata, "product_code", "product", "sku")),
+            ("customers", "customer_code", "customer_name", first_metadata_value(metadata, "customer_code", "customer")),
+        ]
+        with self.connect() as conn:
+            with conn.cursor() as cur:
+                for table_name, code_column, name_column, value in dimensions:
+                    if not value:
+                        continue
+                    table = qname(self.schema, table_name)
+                    cur.execute(
+                        f"""
+                        INSERT INTO {table} ({qident(code_column)}, {qident(name_column)})
+                        VALUES (%s, %s)
+                        ON CONFLICT ({qident(code_column)}) DO UPDATE SET
+                            {qident(name_column)} = EXCLUDED.{qident(name_column)}
+                        """,
+                        (value, value),
+                    )
+            conn.commit()
 
     def insert_chunks(
         self,
@@ -359,20 +655,31 @@ class VectorStore:
         with self.connect() as conn:
             with conn.cursor() as cur:
                 for chunk, embedding in zip(chunks, embeddings):
+                    chunk_typed = chunk_metadata_column_values(chunk.metadata)
                     cur.execute(
                         f"""
                         INSERT INTO {table}
                             (
                                 id, document_id, domain, chunk_index, page_start, page_end,
-                                content, token_count, embedding, metadata
+                                content, token_count, embedding, metadata, section_title,
+                                section_number, clause_ref, requirement_type, process_step,
+                                risk_signal, key_terms, detected_entities
                             )
-                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s::{vector_type}, %s)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s::{vector_type}, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                         ON CONFLICT (document_id, chunk_index)
                         DO UPDATE SET
                             content = EXCLUDED.content,
                             token_count = EXCLUDED.token_count,
                             embedding = EXCLUDED.embedding,
-                            metadata = EXCLUDED.metadata
+                            metadata = EXCLUDED.metadata,
+                            section_title = EXCLUDED.section_title,
+                            section_number = EXCLUDED.section_number,
+                            clause_ref = EXCLUDED.clause_ref,
+                            requirement_type = EXCLUDED.requirement_type,
+                            process_step = EXCLUDED.process_step,
+                            risk_signal = EXCLUDED.risk_signal,
+                            key_terms = EXCLUDED.key_terms,
+                            detected_entities = EXCLUDED.detected_entities
                         """,
                         (
                             str(uuid4()),
@@ -385,6 +692,14 @@ class VectorStore:
                             chunk.token_count,
                             vector_literal(embedding),
                             Jsonb(chunk.metadata),
+                            chunk_typed["section_title"],
+                            chunk_typed["section_number"],
+                            chunk_typed["clause_ref"],
+                            chunk_typed["requirement_type"],
+                            chunk_typed["process_step"],
+                            chunk_typed["risk_signal"],
+                            chunk_typed["key_terms"],
+                            Jsonb(chunk_typed["detected_entities"]),
                         ),
                     )
                     inserted += 1
@@ -450,7 +765,7 @@ class VectorStore:
                         c.page_start,
                         c.page_end,
                         c.content,
-                        COALESCE(d.metadata, '{{}}'::jsonb) || COALESCE(c.metadata, '{{}}'::jsonb) AS metadata,
+                        document_metadata_json(d) || COALESCE(d.metadata, '{{}}'::jsonb) || COALESCE(c.metadata, '{{}}'::jsonb) AS metadata,
                         1 - (c.embedding <=> %s::{vector_type}) AS score
                     FROM {chunks} c
                     JOIN {documents} d ON d.id = c.document_id
@@ -589,6 +904,17 @@ class VectorStore:
                         d.file_name,
                         d.title,
                         d.author,
+                        d.document_code,
+                        d.document_type_code,
+                        d.revision,
+                        d.lifecycle_status,
+                        d.effective_date,
+                        d.approval_status,
+                        d.is_current,
+                        d.plant_code,
+                        d.process_code,
+                        d.product_code,
+                        d.customer_code,
                         d.source_path,
                         d.created_at,
                         COUNT(c.id)::int AS chunks
@@ -603,6 +929,59 @@ class VectorStore:
                 rows = list(cur.fetchall())
         logger.debug("Listed {} documents.", len(rows))
         return rows
+
+    def save_retrieval_session(
+        self,
+        question: str,
+        filters: Mapping[str, object],
+        prompt_profile: str,
+        top_k: int,
+        answer: str,
+        contexts: Sequence[object],
+    ) -> int:
+        """Persist a RAG answer and the evidence chunks used to generate it."""
+
+        retrieval_sessions = qname(self.schema, "retrieval_sessions")
+        retrieval_evidence = qname(self.schema, "retrieval_evidence")
+        with self.connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    f"""
+                    INSERT INTO {retrieval_sessions}
+                        (question, filters, prompt_profile, top_k, answer)
+                    VALUES (%s, %s, %s, %s, %s)
+                    RETURNING id
+                    """,
+                    (question, Jsonb(dict(filters)), prompt_profile, top_k, answer),
+                )
+                session_id = int(cur.fetchone()["id"])
+                for item in contexts:
+                    result = item.result
+                    cur.execute(
+                        f"""
+                        INSERT INTO {retrieval_evidence}
+                            (
+                                session_id, source_label, chunk_id, document_id, score,
+                                page_start, page_end, evidence_role, quote_excerpt, metadata
+                            )
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                        """,
+                        (
+                            session_id,
+                            item.source_id,
+                            result.chunk_id,
+                            result.document_id,
+                            result.score,
+                            result.page_start,
+                            result.page_end,
+                            "retrieved_context",
+                            result.content[:1200],
+                            Jsonb(result.metadata or {}),
+                        ),
+                    )
+            conn.commit()
+        logger.info("Saved retrieval session {} with {} evidence rows.", session_id, len(contexts))
+        return session_id
 
     def _try_create_vector_index(self) -> None:
         """Create an approximate vector index when pgvector supports it."""
@@ -877,11 +1256,162 @@ def vector_literal(values: Sequence[float]) -> str:
     return "[" + ",".join(cleaned) + "]"
 
 
+def document_compatibility_columns() -> list[str]:
+    """Columns expected by current app versions on existing document tables."""
+
+    return [
+        "is_current BOOLEAN NOT NULL DEFAULT TRUE",
+        "supersedes_document_id UUID",
+        "document_code TEXT",
+        "document_type_code TEXT",
+        "revision TEXT",
+        "lifecycle_status TEXT",
+        "document_date DATE",
+        "effective_date DATE",
+        "review_due_date DATE",
+        "owner_area TEXT",
+        "plant_code TEXT",
+        "process_code TEXT",
+        "product_code TEXT",
+        "customer_code TEXT",
+        "qms_process TEXT",
+        "source_system TEXT",
+        "source_record_id TEXT",
+        "confidentiality_level TEXT",
+        "risk_level TEXT",
+        "approval_status TEXT",
+        "approved_by TEXT",
+        "approved_at TIMESTAMPTZ",
+    ]
+
+
+def chunk_compatibility_columns() -> list[str]:
+    """Columns expected by current app versions on existing chunk tables."""
+
+    return [
+        "section_title TEXT",
+        "section_number TEXT",
+        "clause_ref TEXT",
+        "requirement_type TEXT",
+        "process_step TEXT",
+        "risk_signal TEXT",
+        "key_terms TEXT[]",
+        "detected_entities JSONB NOT NULL DEFAULT '{}'::jsonb",
+    ]
+
+
+def metadata_column_values(metadata: Mapping[str, object]) -> dict[str, str | None]:
+    """Map flexible metadata JSON to typed document columns."""
+
+    document_type = first_metadata_value(metadata, "document_type_code", "document_type", "doc_type")
+    if document_type:
+        document_type = document_type.upper().replace(" ", "_")
+    return {
+        "supersedes_document_id": first_metadata_value(metadata, "supersedes_document_id"),
+        "document_code": first_metadata_value(metadata, "document_code", "code"),
+        "document_type_code": document_type,
+        "revision": first_metadata_value(metadata, "revision", "rev", "version"),
+        "lifecycle_status": first_metadata_value(metadata, "lifecycle_status", "status"),
+        "document_date": iso_date_or_none(first_metadata_value(metadata, "document_date")),
+        "effective_date": iso_date_or_none(first_metadata_value(metadata, "effective_date")),
+        "review_due_date": iso_date_or_none(first_metadata_value(metadata, "review_due_date")),
+        "owner_area": first_metadata_value(metadata, "owner_area", "owner"),
+        "plant_code": first_metadata_value(metadata, "plant_code", "plant"),
+        "process_code": first_metadata_value(metadata, "process_code", "process"),
+        "product_code": first_metadata_value(metadata, "product_code", "product", "sku"),
+        "customer_code": first_metadata_value(metadata, "customer_code", "customer"),
+        "qms_process": first_metadata_value(metadata, "qms_process"),
+        "source_system": first_metadata_value(metadata, "source_system"),
+        "source_record_id": first_metadata_value(metadata, "source_record_id"),
+        "confidentiality_level": first_metadata_value(metadata, "confidentiality_level"),
+        "risk_level": first_metadata_value(metadata, "risk_level"),
+        "approval_status": first_metadata_value(metadata, "approval_status"),
+        "approved_by": first_metadata_value(metadata, "approved_by"),
+        "approved_at": first_metadata_value(metadata, "approved_at"),
+    }
+
+
+def chunk_metadata_column_values(metadata: Mapping[str, object]) -> dict[str, object]:
+    """Map chunk metadata JSON to typed chunk columns."""
+
+    key_terms = metadata.get("key_terms")
+    if not isinstance(key_terms, list):
+        key_terms = None
+    detected_entities = metadata.get("detected_entities")
+    if not isinstance(detected_entities, dict):
+        detected_entities = {}
+    return {
+        "section_title": first_metadata_value(metadata, "section_title"),
+        "section_number": first_metadata_value(metadata, "section_number"),
+        "clause_ref": first_metadata_value(metadata, "clause_ref"),
+        "requirement_type": first_metadata_value(metadata, "requirement_type"),
+        "process_step": first_metadata_value(metadata, "process_step"),
+        "risk_signal": first_metadata_value(metadata, "risk_signal"),
+        "key_terms": key_terms,
+        "detected_entities": detected_entities,
+    }
+
+
+def first_metadata_value(metadata: Mapping[str, object], *keys: str) -> str | None:
+    """Return the first non-empty metadata value for a set of aliases."""
+
+    for key in keys:
+        value = metadata.get(key)
+        if value is None:
+            continue
+        text = str(value).strip()
+        if text:
+            return text
+    return None
+
+
+def iso_date_or_none(value: str | None) -> str | None:
+    """Return an ISO date string only when PostgreSQL can safely cast it."""
+
+    if value and re.match(r"^\d{4}-\d{2}-\d{2}$", value):
+        return value
+    return None
+
+
+def document_metadata_json(alias: str = "d") -> str:
+    """SQL expression that exposes typed document columns as JSON metadata."""
+
+    return f"""
+        jsonb_strip_nulls(jsonb_build_object(
+            'document_code', {alias}.document_code,
+            'document_type', {alias}.document_type_code,
+            'document_type_code', {alias}.document_type_code,
+            'revision', {alias}.revision,
+            'lifecycle_status', {alias}.lifecycle_status,
+            'document_date', {alias}.document_date,
+            'effective_date', {alias}.effective_date,
+            'review_due_date', {alias}.review_due_date,
+            'owner_area', {alias}.owner_area,
+            'plant', {alias}.plant_code,
+            'plant_code', {alias}.plant_code,
+            'process', {alias}.process_code,
+            'process_code', {alias}.process_code,
+            'product', {alias}.product_code,
+            'product_code', {alias}.product_code,
+            'customer', {alias}.customer_code,
+            'customer_code', {alias}.customer_code,
+            'qms_process', {alias}.qms_process,
+            'confidentiality_level', {alias}.confidentiality_level,
+            'risk_level', {alias}.risk_level,
+            'approval_status', {alias}.approval_status,
+            'approved_by', {alias}.approved_by,
+            'is_current', {alias}.is_current
+        ))
+    """
+
+
 def build_filter_clause(domain: str, filters: Mapping[str, object] | None = None) -> tuple[str, list[object]]:
     """Build a SQL WHERE clause for quality/operations metadata filters."""
 
     clauses = ["c.domain = %s", "c.embedding IS NOT NULL"]
     params: list[object] = [domain]
+    if normalize_filter_value((filters or {}).get("include_obsolete")).lower() not in {"1", "true", "yes", "si"}:
+        clauses.append("COALESCE(d.is_current, TRUE) IS TRUE")
 
     for logical_key, aliases in QUALITY_FILTER_ALIASES.items():
         value = normalize_filter_value((filters or {}).get(logical_key))

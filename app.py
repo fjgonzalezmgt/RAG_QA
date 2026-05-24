@@ -8,6 +8,7 @@ conversation memory.
 from __future__ import annotations
 
 import sys
+from datetime import date
 from dataclasses import replace
 from pathlib import Path
 
@@ -39,12 +40,18 @@ def _active_filters(raw_filters: dict[str, object]) -> dict[str, str]:
     return active
 
 
+def _date_filter_value(value: date | None) -> str:
+    """Return ISO date text for optional Streamlit date inputs."""
+
+    return value.isoformat() if value else ""
+
+
 def _source_caption(item) -> str:
     """Build a compact evidence caption for the UI."""
 
     metadata = item.result.metadata or {}
     parts = [f"score={item.result.score:.3f}", item.result.file_name]
-    for key in ("document_type", "plant", "process", "product", "customer", "audit"):
+    for key in ("document_type", "revision", "effective_date", "approval_status", "is_current", "plant", "process", "product", "customer", "audit"):
         value = metadata.get(key) or metadata.get(f"{key}_code")
         if value:
             parts.append(f"{key}={value}")
@@ -127,6 +134,8 @@ with st.sidebar:
         value=min(base_settings.rag.chunk_overlap, int(chunk_size) - 1),
         step=25,
     )
+    recursive_pdf_scan = st.toggle("Incluir subcarpetas PDF", value=base_settings.rag.recursive_pdf_scan)
+    pdf_text_fallback = st.toggle("Fallback de texto PDF", value=base_settings.rag.pdf_text_fallback)
 
     st.divider()
     st.header("Filtros operativos")
@@ -152,8 +161,8 @@ with st.sidebar:
         format_func=lambda value: "Todos" if not value else value,
     )
     audit_filter = st.text_input("Auditoria / hallazgo", placeholder="Ej. AUD-2026-014")
-    date_from_filter = st.text_input("Fecha desde", placeholder="YYYY-MM-DD")
-    date_to_filter = st.text_input("Fecha hasta", placeholder="YYYY-MM-DD")
+    date_from_filter = st.date_input("Fecha desde", value=None, format="YYYY-MM-DD")
+    date_to_filter = st.date_input("Fecha hasta", value=None, format="YYYY-MM-DD")
 
     health = st.session_state.openai_health
     if health.ok:
@@ -180,6 +189,8 @@ rag_settings = replace(
     max_chunks_per_document=int(max_chunks_per_document),
     chunk_size=int(chunk_size),
     chunk_overlap=int(chunk_overlap),
+    recursive_pdf_scan=bool(recursive_pdf_scan),
+    pdf_text_fallback=bool(pdf_text_fallback),
 )
 settings = replace(base_settings, rag=rag_settings)
 quality_filters = _active_filters(
@@ -190,8 +201,8 @@ quality_filters = _active_filters(
         "customer": customer_filter,
         "document_type": document_type_filter,
         "audit": audit_filter,
-        "date_from": date_from_filter,
-        "date_to": date_to_filter,
+        "date_from": _date_filter_value(date_from_filter),
+        "date_to": _date_filter_value(date_to_filter),
     }
 )
 
@@ -321,6 +332,19 @@ with right:
 
                 st.session_state.messages.append({"role": "assistant", "content": answer})
                 assistant_turn_index = len(st.session_state.messages) - 1
+                try:
+                    session_id = store.save_retrieval_session(
+                        question=question,
+                        filters=quality_filters,
+                        prompt_profile=profile.key,
+                        top_k=settings.rag.top_k,
+                        answer=answer,
+                        contexts=contexts,
+                    )
+                    st.caption(f"Sesion trazable #{session_id}")
+                except Exception as audit_exc:
+                    logger.warning("Could not save retrieval audit session: {}", audit_exc)
+                    st.caption("Respuesta generada; no se pudo guardar la trazabilidad en BD.")
                 st.session_state.sources_by_turn[assistant_turn_index] = [
                     {
                         "citation": item.citation,

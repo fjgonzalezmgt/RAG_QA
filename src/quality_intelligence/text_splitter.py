@@ -7,6 +7,7 @@ where retrieved text came from.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 
 from .pdf_loader import PageText
@@ -90,7 +91,7 @@ def split_pages(
                     page_start=page_start,
                     page_end=page_end,
                     token_count=estimate_tokens(content),
-                    metadata={"page_start": page_start, "page_end": page_end},
+                    metadata=chunk_metadata(content, page_start, page_end),
                 )
             )
             index += 1
@@ -106,6 +107,101 @@ def estimate_tokens(text: str) -> int:
     """Estimate token count from character length."""
 
     return max(1, len(text) // 4)
+
+
+def chunk_metadata(content: str, page_start: int, page_end: int) -> dict[str, object]:
+    """Infer lightweight operational metadata from chunk text."""
+
+    metadata: dict[str, object] = {"page_start": page_start, "page_end": page_end}
+    section = detect_section(content)
+    if section:
+        metadata.update(section)
+    requirement_type = detect_requirement_type(content)
+    if requirement_type:
+        metadata["requirement_type"] = requirement_type
+    key_terms = detect_key_terms(content)
+    if key_terms:
+        metadata["key_terms"] = key_terms
+    entities = detect_entities(content)
+    if entities:
+        metadata["detected_entities"] = entities
+    return metadata
+
+
+def detect_section(content: str) -> dict[str, str]:
+    """Detect a probable section heading or clause reference."""
+
+    for line in content.splitlines()[:8]:
+        cleaned = line.strip()
+        if not cleaned or cleaned.startswith("[Page "):
+            continue
+        match = re.match(r"^(\d+(?:\.\d+)*)(?:\.|\s+|-|:)\s*(.{3,120})$", cleaned)
+        if match:
+            return {"section_number": match.group(1), "section_title": match.group(2).strip()}
+        if re.match(r"^(section|seccion|clause|clausula)\b", cleaned, flags=re.IGNORECASE):
+            return {"section_title": cleaned[:140]}
+    clause = re.search(r"\b(?:clause|clausula|req(?:uirement)?\.?)\s*([A-Za-z0-9.-]+)\b", content, flags=re.IGNORECASE)
+    if clause:
+        return {"clause_ref": clause.group(1)}
+    return {}
+
+
+def detect_requirement_type(content: str) -> str | None:
+    """Classify common QMS requirement language."""
+
+    lowered = content.lower()
+    if any(term in lowered for term in ("shall", "must", "debe ", "debera", "obligatorio", "required")):
+        return "requirement"
+    if any(term in lowered for term in ("record", "registro", "evidence", "evidencia")):
+        return "evidence"
+    if any(term in lowered for term in ("responsible", "responsable", "owner")):
+        return "responsibility"
+    if any(term in lowered for term in ("corrective action", "accion correctiva", "acción correctiva", "capa")):
+        return "action"
+    return None
+
+
+def detect_key_terms(content: str) -> list[str]:
+    """Extract a small controlled vocabulary useful for filtering and review."""
+
+    terms = []
+    vocabulary = [
+        "CAPA",
+        "SOP",
+        "QMS",
+        "auditoria",
+        "audit",
+        "reclamo",
+        "complaint",
+        "especificacion",
+        "specification",
+        "riesgo",
+        "risk",
+        "causa raiz",
+        "root cause",
+    ]
+    lowered = content.lower()
+    for term in vocabulary:
+        if term.lower() in lowered:
+            terms.append(term)
+    return terms[:12]
+
+
+def detect_entities(content: str) -> dict[str, list[str]]:
+    """Detect common quality-system identifiers."""
+
+    patterns = {
+        "capa": r"\bCAPA[-_ ]?\d{4}[-_ ]?\d+\b",
+        "audit": r"\bAUD[-_ ]?\d{4}[-_ ]?\d+\b",
+        "sku": r"\bSKU[-_ ]?[A-Za-z0-9.-]+\b",
+        "lot": r"\b(?:LOT|LOTE|BATCH)[-_ ]?[A-Za-z0-9.-]+\b",
+    }
+    entities: dict[str, list[str]] = {}
+    for key, pattern in patterns.items():
+        matches = sorted({match.group(0) for match in re.finditer(pattern, content, flags=re.IGNORECASE)})
+        if matches:
+            entities[key] = matches[:10]
+    return entities
 
 
 def _build_full_text(pages: list[PageText]) -> tuple[str, list[tuple[int, int, int]]]:

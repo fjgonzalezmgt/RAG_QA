@@ -52,7 +52,19 @@ def check_openai_connection(settings: OpenAISettings) -> OpenAIHealth:
     try:
         logger.info("Checking OpenAI API connectivity with model '{}' using base_url '{}'.", settings.chat_model, base_url)
         client = OpenAI(**kwargs)
-        client.models.retrieve(settings.chat_model)
+        if settings.chat_model.startswith(("gpt-5", "o")) and hasattr(client, "responses"):
+            client.responses.create(
+                model=settings.chat_model,
+                input="Responde solamente: ok",
+                reasoning={"effort": settings.reasoning_effort},
+                text={"verbosity": "low"},
+            )
+        else:
+            client.chat.completions.create(
+                model=settings.chat_model,
+                messages=[{"role": "user", "content": "Responde solamente: ok"}],
+                max_tokens=5,
+            )
         logger.success("OpenAI API connectivity OK.")
         return OpenAIHealth(ok=True, message=f"Conectado a OpenAI. Modelo disponible: {settings.chat_model}.")
     except Exception as exc:

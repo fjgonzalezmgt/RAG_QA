@@ -70,6 +70,15 @@ def _float_env(name: str, default: float) -> float:
     return float(value)
 
 
+def _bool_env(name: str, default: bool) -> bool:
+    """Read a boolean environment variable."""
+
+    value = os.getenv(name)
+    if value is None or value == "":
+        return default
+    return value.strip().lower() in {"1", "true", "yes", "y", "si", "sí"}
+
+
 def _optional_url_env(name: str) -> str | None:
     """Read and normalize an optional URL environment variable.
 
@@ -232,6 +241,8 @@ class RagSettings:
     candidate_k: int
     max_chunks_per_document: int
     max_context_chars: int
+    recursive_pdf_scan: bool
+    pdf_text_fallback: bool
 
 
 @dataclass(frozen=True)
@@ -267,7 +278,7 @@ def get_settings() -> Settings:
         openai=OpenAISettings(
             api_key=os.getenv("OPENAI_API_KEY", ""),
             base_url=base_url,
-            chat_model=os.getenv("OPENAI_CHAT_MODEL", "gpt-5.5"),
+            chat_model=os.getenv("OPENAI_CHAT_MODEL", "gpt-5.2"),
             embedding_model=os.getenv("OPENAI_EMBEDDING_MODEL", "text-embedding-3-large"),
             embedding_dim=_int_env("OPENAI_EMBEDDING_DIM", 2000),
             embedding_batch_size=_int_env("OPENAI_EMBEDDING_BATCH_SIZE", 64),
@@ -285,5 +296,7 @@ def get_settings() -> Settings:
             candidate_k=_int_env("RAG_CANDIDATE_K", 80),
             max_chunks_per_document=_int_env("RAG_MAX_CHUNKS_PER_DOCUMENT", 2),
             max_context_chars=_int_env("RAG_MAX_CONTEXT_CHARS", 50000),
+            recursive_pdf_scan=_bool_env("RAG_RECURSIVE_PDF_SCAN", True),
+            pdf_text_fallback=_bool_env("RAG_PDF_TEXT_FALLBACK", True),
         ),
     )

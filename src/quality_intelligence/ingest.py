@@ -136,15 +136,16 @@ class PDFIngestor:
         result = IngestResult(pdf_dir=target_dir, domain=target_domain)
 
         store.ensure_schema()
-        pdfs = list_pdfs(target_dir)
+        pdfs = list_pdfs(target_dir, recursive=self.settings.rag.recursive_pdf_scan)
         result.files_found = len(pdfs)
         logger.info("Found {} root-level PDF files in '{}'.", len(pdfs), target_dir)
 
         for pdf_path in pdfs:
+            superseded_id: str | None = None
             try:
                 logger.info("Processing PDF '{}'.", pdf_path.name)
                 _notify(progress, f"Reading {pdf_path.name}")
-                document = load_pdf(pdf_path)
+                document = load_pdf(pdf_path, ocr_fallback=self.settings.rag.pdf_text_fallback)
                 source_path = str(pdf_path.resolve())
 
                 if force:
@@ -161,6 +162,7 @@ class PDFIngestor:
                         logger.info("Skipping already indexed PDF '{}'. document_id='{}'.", pdf_path.name, existing_id)
                         _notify(progress, f"Skipping {pdf_path.name}; already indexed")
                         continue
+                    superseded_id = store.mark_source_superseded(target_domain, source_path)
 
                 chunks = split_pages(
                     document.pages,
@@ -182,6 +184,8 @@ class PDFIngestor:
                 document_metadata = {"pages": len(document.pages)}
                 if target_domain == "quality_intelligence":
                     document_metadata.update(infer_quality_metadata(pdf_path))
+                if superseded_id:
+                    document_metadata["supersedes_document_id"] = superseded_id
 
                 doc_id = store.insert_document(
                     domain=target_domain,

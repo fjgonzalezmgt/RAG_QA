@@ -85,6 +85,7 @@ CREATE TABLE IF NOT EXISTS documents (
     author TEXT,
     content_hash TEXT NOT NULL,
     metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+    is_current BOOLEAN NOT NULL DEFAULT TRUE,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     document_code TEXT,
     document_type_code TEXT REFERENCES document_types(code),
@@ -131,6 +132,7 @@ ALTER TABLE documents ADD COLUMN IF NOT EXISTS approval_status TEXT;
 ALTER TABLE documents ADD COLUMN IF NOT EXISTS approved_by TEXT;
 ALTER TABLE documents ADD COLUMN IF NOT EXISTS approved_at TIMESTAMPTZ;
 ALTER TABLE documents ADD COLUMN IF NOT EXISTS supersedes_document_id UUID REFERENCES documents(id);
+ALTER TABLE documents ADD COLUMN IF NOT EXISTS is_current BOOLEAN NOT NULL DEFAULT TRUE;
 
 CREATE TABLE IF NOT EXISTS chunks (
     id UUID PRIMARY KEY,
@@ -304,6 +306,7 @@ CREATE TABLE IF NOT EXISTS decision_records (
 );
 
 CREATE INDEX IF NOT EXISTS documents_domain_idx ON documents (domain);
+CREATE INDEX IF NOT EXISTS documents_current_idx ON documents (domain, is_current);
 CREATE INDEX IF NOT EXISTS documents_document_type_idx ON documents (document_type_code);
 CREATE INDEX IF NOT EXISTS documents_plant_process_idx ON documents (plant_code, process_code);
 CREATE INDEX IF NOT EXISTS documents_product_customer_idx ON documents (product_code, customer_code);

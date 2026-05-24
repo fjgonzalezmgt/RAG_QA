@@ -188,7 +188,8 @@ respuestas basadas en evidencia, no opiniones genericas.
   - auditoria / hallazgo
   - rango de fechas
 - Retrieval semantico con diversificacion por documento.
-- Citas trazables tipo `[S1] Documento, pp. 4-5`.
+- Citas trazables tipo `[S1] Documento, pp. 4-5`, con metadata de revision,
+  vigencia, aprobacion y contexto operativo cuando esta disponible.
 - Expansor de fuentes con score, archivo, metadata y extracto.
 - Inferencia inicial de metadata QMS desde nombres controlados de archivo.
 - Esquema SQL extendido para trazabilidad, evidencia, eventos de calidad,
@@ -369,7 +370,7 @@ Valores principales:
 DB_NAME=RAG_DB
 RAG_DOMAIN=quality_intelligence
 RAG_PDF_DIR=./quality_knowledge_base
-OPENAI_CHAT_MODEL=gpt-5.5
+OPENAI_CHAT_MODEL=gpt-5.2
 OPENAI_EMBEDDING_MODEL=text-embedding-3-large
 OPENAI_EMBEDDING_DIM=2000
 ```
@@ -387,6 +388,9 @@ Variables RAG:
 - `RAG_CHUNK_SIZE` y `RAG_CHUNK_OVERLAP`.
 - `RAG_TOP_K`, `RAG_CANDIDATE_K`, `RAG_MAX_CHUNKS_PER_DOCUMENT`.
 - `RAG_MAX_CONTEXT_CHARS`.
+- `RAG_RECURSIVE_PDF_SCAN`: incluye subcarpetas dentro del repositorio documental.
+- `RAG_PDF_TEXT_FALLBACK`: intenta fallback con `pdftotext` y, si esta instalado,
+  OCR opcional con `ocrmypdf` cuando `pypdf` no extrae texto.
 
 ## Instalacion
 

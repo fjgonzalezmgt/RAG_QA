@@ -92,10 +92,11 @@ class LLMClient:
             "citas [S1], [S2] donde aplique."
         )
 
+        if prefers_responses_api(self.settings.chat_model):
+            return self._answer_with_responses(profile.system_prompt, user_prompt)
+
         request = {
             "model": self.settings.chat_model,
-            "reasoning_effort": self.settings.reasoning_effort,
-            "verbosity": self.settings.verbosity,
             "messages": [
                 {"role": instruction_role(self.settings.chat_model), "content": profile.system_prompt},
                 {"role": "user", "content": user_prompt},
@@ -108,17 +109,49 @@ class LLMClient:
                 "Omitting temperature for model '{}' because it only supports the default value.",
                 self.settings.chat_model,
             )
-        logger.info(
-            "Using reasoning_effort='{}' and verbosity='{}'.",
-            self.settings.reasoning_effort,
-            self.settings.verbosity,
-        )
-
         response = self.client.chat.completions.create(**request)
         content = response.choices[0].message.content
         answer = (content or "").strip()
         logger.success("LLM answer generated. chars={}.", len(answer))
         return answer
+
+    def _answer_with_responses(self, system_prompt: str, user_prompt: str) -> str:
+        """Generate an answer through the Responses API for GPT-5 models."""
+
+        request = {
+            "model": self.settings.chat_model,
+            "input": [
+                {"role": "developer", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+            "reasoning": {"effort": self.settings.reasoning_effort},
+            "text": {"verbosity": self.settings.verbosity},
+        }
+        logger.info(
+            "Calling Responses API with reasoning.effort='{}' and text.verbosity='{}'.",
+            self.settings.reasoning_effort,
+            self.settings.verbosity,
+        )
+        try:
+            response = self.client.responses.create(**request)
+        except AttributeError:
+            logger.warning("OpenAI SDK does not expose Responses API; falling back to Chat Completions.")
+            return self._answer_with_chat_fallback(system_prompt, user_prompt)
+        answer = extract_response_text(response)
+        logger.success("LLM answer generated through Responses API. chars={}.", len(answer))
+        return answer
+
+    def _answer_with_chat_fallback(self, system_prompt: str, user_prompt: str) -> str:
+        """Fallback for older SDK versions."""
+
+        response = self.client.chat.completions.create(
+            model=self.settings.chat_model,
+            messages=[
+                {"role": instruction_role(self.settings.chat_model), "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+        )
+        return (response.choices[0].message.content or "").strip()
 
     def _require_api_key(self) -> None:
         """Raise when no usable OpenAI API key is configured."""
@@ -148,7 +181,10 @@ def build_context_block(contexts: list[RetrievedContext], max_chars: int) -> str
 
     for item in contexts:
         result = item.result
+        metadata_text = format_metadata(result.metadata)
         header = f"{item.citation} | score={result.score:.3f}"
+        if metadata_text:
+            header = f"{header} | {metadata_text}"
         block = f"{header}\n{result.content.strip()}"
         if len(block) > remaining:
             block = block[:remaining].rstrip()
@@ -206,6 +242,52 @@ def supports_temperature(model: str) -> bool:
     """Return whether a model should receive ``temperature``."""
 
     return not model.startswith("gpt-5")
+
+
+def prefers_responses_api(model: str) -> bool:
+    """Return whether the model family should use Responses API semantics."""
+
+    return model.startswith("gpt-5") or model.startswith("o")
+
+
+def format_metadata(metadata: dict[str, object]) -> str:
+    """Format operational metadata for prompt context headers."""
+
+    parts: list[str] = []
+    for key in (
+        "document_code",
+        "document_type",
+        "revision",
+        "lifecycle_status",
+        "effective_date",
+        "approval_status",
+        "is_current",
+        "plant",
+        "process",
+        "product",
+        "customer",
+        "risk_level",
+    ):
+        value = metadata.get(key)
+        if value not in (None, ""):
+            parts.append(f"{key}={value}")
+    return " | ".join(parts)
+
+
+def extract_response_text(response: object) -> str:
+    """Extract text from an OpenAI Responses API object."""
+
+    output_text = getattr(response, "output_text", None)
+    if output_text:
+        return str(output_text).strip()
+
+    fragments: list[str] = []
+    for item in getattr(response, "output", []) or []:
+        for content in getattr(item, "content", []) or []:
+            text = getattr(content, "text", None)
+            if text:
+                fragments.append(str(text))
+    return "\n".join(fragments).strip()
 
 
 def instruction_role(model: str) -> str:

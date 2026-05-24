@@ -104,7 +104,7 @@ def find_revision(values: list[str]) -> str | None:
 def find_iso_date(value: str) -> str | None:
     """Find an ISO date in a string."""
 
-    match = re.search(r"\b(20\d{2}-\d{2}-\d{2})\b", value)
+    match = re.search(r"(?<!\d)(20\d{2}-\d{2}-\d{2})(?!\d)", value)
     return match.group(1) if match else None
 
 
