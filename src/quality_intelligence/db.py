@@ -956,6 +956,57 @@ class VectorStore:
         logger.debug("Listed {} documents.", len(rows))
         return rows
 
+    def list_filter_options(
+        self,
+        domain: str,
+        include_obsolete: bool = False,
+        limit_per_field: int = 200,
+    ) -> dict[str, list[str]]:
+        """List operational filter options discovered from document metadata.
+
+        Parameters
+        ----------
+        domain
+            Logical RAG domain to inspect.
+        include_obsolete
+            Whether obsolete document versions should contribute filter values.
+        limit_per_field
+            Maximum values returned for each filter field.
+
+        Returns
+        -------
+        dict[str, list[str]]
+            Filter values keyed by logical field name.
+        """
+
+        documents = qname(self.schema, "documents")
+        if not self._table_exists("documents"):
+            return empty_filter_options()
+
+        options: dict[str, list[str]] = {}
+        current_clause = "" if include_obsolete else "AND COALESCE(d.is_current, TRUE) IS TRUE"
+        with self.connect() as conn:
+            with conn.cursor() as cur:
+                for field, expression in filter_option_expressions().items():
+                    cur.execute(
+                        f"""
+                        SELECT DISTINCT value
+                        FROM (
+                            SELECT NULLIF(BTRIM(({expression})::text), '') AS value
+                            FROM {documents} d
+                            WHERE d.domain = %s
+                              {current_clause}
+                        ) option_values
+                        WHERE value IS NOT NULL
+                          AND lower(value) NOT IN ('none', 'null', 'n/a', 'na')
+                        ORDER BY value
+                        LIMIT %s
+                        """,
+                        (domain, limit_per_field),
+                    )
+                    options[field] = [row["value"] for row in cur.fetchall()]
+        return options
+
     def save_retrieval_session(
         self,
         question: str,
@@ -1513,6 +1564,83 @@ def chunk_compatibility_columns() -> list[str]:
         "key_terms TEXT[]",
         "detected_entities JSONB NOT NULL DEFAULT '{}'::jsonb",
     ]
+
+
+def empty_filter_options() -> dict[str, list[str]]:
+    """Return an empty operational filter option mapping.
+
+    Returns
+    -------
+    dict[str, list[str]]
+        Empty option lists for all UI filter fields.
+    """
+
+    return {field: [] for field in ("plant", "process", "product", "customer", "document_type", "audit")}
+
+
+def filter_option_expressions() -> dict[str, str]:
+    """Return SQL expressions used to discover UI filter values.
+
+    Returns
+    -------
+    dict[str, str]
+        SQL expressions keyed by logical filter field.
+    """
+
+    return {
+        "plant": """
+            COALESCE(
+                NULLIF(d.plant_code, ''),
+                NULLIF(d.metadata ->> 'plant', ''),
+                NULLIF(d.metadata ->> 'plant_code', ''),
+                NULLIF(d.metadata ->> 'site', ''),
+                NULLIF(d.metadata ->> 'site_code', '')
+            )
+        """,
+        "process": """
+            COALESCE(
+                NULLIF(d.process_code, ''),
+                NULLIF(d.qms_process, ''),
+                NULLIF(d.metadata ->> 'process', ''),
+                NULLIF(d.metadata ->> 'process_code', ''),
+                NULLIF(d.metadata ->> 'area', ''),
+                NULLIF(d.metadata ->> 'qms_process', '')
+            )
+        """,
+        "product": """
+            COALESCE(
+                NULLIF(d.product_code, ''),
+                NULLIF(d.metadata ->> 'product', ''),
+                NULLIF(d.metadata ->> 'product_code', ''),
+                NULLIF(d.metadata ->> 'sku', ''),
+                NULLIF(d.metadata ->> 'material', '')
+            )
+        """,
+        "customer": """
+            COALESCE(
+                NULLIF(d.customer_code, ''),
+                NULLIF(d.metadata ->> 'customer', ''),
+                NULLIF(d.metadata ->> 'customer_code', ''),
+                NULLIF(d.metadata ->> 'account', '')
+            )
+        """,
+        "document_type": """
+            COALESCE(
+                NULLIF(d.document_type_code, ''),
+                NULLIF(d.metadata ->> 'document_type', ''),
+                NULLIF(d.metadata ->> 'document_type_code', ''),
+                NULLIF(d.metadata ->> 'doc_type', ''),
+                NULLIF(d.metadata ->> 'type', '')
+            )
+        """,
+        "audit": """
+            COALESCE(
+                NULLIF(d.metadata ->> 'audit', ''),
+                NULLIF(d.metadata ->> 'audit_id', ''),
+                NULLIF(d.metadata ->> 'audit_code', '')
+            )
+        """,
+    }
 
 
 def metadata_column_values(metadata: Mapping[str, object]) -> dict[str, str | None]:

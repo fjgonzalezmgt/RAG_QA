@@ -188,6 +188,8 @@ respuestas basadas en evidencia, no opiniones genericas.
   - tipo documental
   - auditoria / hallazgo
   - rango de fechas
+- Opciones de filtros operativos generadas automaticamente desde la metadata
+  indexada, con entrada manual como fallback.
 - Retrieval semantico con diversificacion por documento.
 - Citas trazables tipo `[S1] Documento, pp. 4-5`, con metadata de revision,
   vigencia, aprobacion y contexto operativo cuando esta disponible.
@@ -518,6 +520,7 @@ La interfaz incluye:
 - controles de chunking, retrieval y enriquecimiento de metadata con LLM;
 - prueba de conexion con OpenAI;
 - filtros operativos y toggle para incluir documentos obsoletos;
+- filtros dinamicos basados en metadata indexada;
 - modos de consulta por caso operativo;
 - preguntas rapidas;
 - explorador de documentos indexados;

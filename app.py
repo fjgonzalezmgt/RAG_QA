@@ -157,6 +157,58 @@ def _source_caption(item) -> str:
     return " | ".join(parts)
 
 
+def _metadata_filter(
+    label: str,
+    field_key: str,
+    options: list[str],
+    placeholder: str,
+    help_text: str,
+    default_value: str = "",
+) -> str:
+    """Render a metadata-driven filter with manual fallback.
+
+    Parameters
+    ----------
+    label
+        User-facing filter label.
+    field_key
+        Stable key suffix used by Streamlit widgets.
+    options
+        Values discovered from indexed metadata.
+    placeholder
+        Placeholder for manual entry.
+    help_text
+        Tooltip text for the filter.
+    default_value
+        Preferred selected value when present.
+
+    Returns
+    -------
+    str
+        Selected or manually-entered filter value.
+    """
+
+    clean_options = sorted({str(option).strip() for option in options if str(option).strip()} | ({default_value} if default_value else set()))
+    choices = [""] + clean_options + ["Manual..."]
+    default_index = choices.index(default_value) if default_value in choices else 0
+    selected = st.selectbox(
+        label,
+        choices,
+        index=default_index,
+        format_func=lambda value: "Todos" if not value else value,
+        help=help_text,
+        key=f"{field_key}_metadata_select",
+    )
+    if selected == "Manual...":
+        return st.text_input(
+            f"{label} manual",
+            placeholder=placeholder,
+            help=f"Valor manual para {label.lower()} cuando no aparece en metadata.",
+            key=f"{field_key}_manual",
+        )
+    return selected
+
+
 def _quality_score(contexts) -> tuple[str, int, list[str]]:
     """Estimate document-confidence signal from retrieved evidence metadata.
 
@@ -333,6 +385,16 @@ if "sources_by_turn" not in st.session_state:
 if "openai_health" not in st.session_state:
     st.session_state.openai_health = check_openai_connection(base_settings.openai)
 
+filter_option_store = VectorStore(base_settings.db, QUALITY_INTELLIGENCE_DOMAIN, base_settings.openai.embedding_dim)
+filter_options: dict[str, list[str]] = {
+    "plant": [],
+    "process": [],
+    "product": [],
+    "customer": [],
+    "document_type": [],
+    "audit": [],
+}
+
 with st.sidebar:
     st.header("Configuracion del asistente")
     pdf_dir = st.text_input(
@@ -414,38 +476,69 @@ with st.sidebar:
         help="Ajusta filtros sugeridos y enfoque de la respuesta.",
     )
     mode_document_type = QUERY_MODES[query_mode]["document_type"]
-    plant_filter = st.text_input("Planta / sitio", placeholder="Ej. Planta Norte", help="Limita evidencia a una planta o sitio.")
-    process_filter = st.text_input("Proceso / area", placeholder="Ej. Empaque", help="Limita evidencia por proceso, area o value stream.")
-    product_filter = st.text_input("Producto / SKU", placeholder="Ej. QA-100", help="Filtra por producto, material o SKU.")
-    customer_filter = st.text_input("Cliente", placeholder="Ej. ACME", help="Filtra por cliente o cuenta.")
-    document_type_options = [
-        "",
-        "SOP",
-        "Procedimiento",
-        "CAPA",
-        "Auditoria",
-        "Reclamo",
-        "Especificacion",
-        "Reporte de calidad",
-        "Leccion aprendida",
-        "DMAIC",
-        "Indicador",
-    ]
-    document_type_filter = st.selectbox(
-        "Tipo documental",
-        document_type_options,
-        index=document_type_options.index(mode_document_type) if mode_document_type in document_type_options else 0,
-        format_func=lambda value: "Todos" if not value else value,
-        help="Tipo documental objetivo; el modo de consulta sugiere un valor inicial.",
-    )
-    audit_filter = st.text_input("Auditoria / hallazgo", placeholder="Ej. AUD-2026-014", help="Codigo de auditoria, hallazgo o referencia relacionada.")
-    date_from_filter = st.date_input("Fecha desde", value=None, format="YYYY-MM-DD", help="Fecha minima documental o efectiva.")
-    date_to_filter = st.date_input("Fecha hasta", value=None, format="YYYY-MM-DD", help="Fecha maxima documental o efectiva.")
     include_obsolete = st.toggle(
         "Incluir documentos obsoletos",
         value=False,
         help="Activalo solo para comparar versiones o investigar historial.",
     )
+    try:
+        filter_options = filter_option_store.list_filter_options(
+            domain=QUALITY_INTELLIGENCE_DOMAIN,
+            include_obsolete=include_obsolete,
+        )
+        if any(filter_options.values()):
+            st.caption("Filtros cargados desde metadata indexada.")
+        else:
+            st.caption("Aun no hay metadata indexada; usa valores manuales.")
+    except Exception as exc:
+        logger.warning("Could not load metadata filter options: {}", exc)
+        st.caption("No se pudieron cargar filtros desde metadata; usa valores manuales.")
+
+    plant_filter = _metadata_filter(
+        "Planta / sitio",
+        "plant",
+        filter_options["plant"],
+        "Ej. Planta Norte",
+        "Opciones detectadas desde metadata documental.",
+    )
+    process_filter = _metadata_filter(
+        "Proceso / area",
+        "process",
+        filter_options["process"],
+        "Ej. Empaque",
+        "Opciones detectadas desde metadata documental.",
+    )
+    product_filter = _metadata_filter(
+        "Producto / SKU",
+        "product",
+        filter_options["product"],
+        "Ej. QA-100",
+        "Opciones detectadas desde metadata documental.",
+    )
+    customer_filter = _metadata_filter(
+        "Cliente",
+        "customer",
+        filter_options["customer"],
+        "Ej. ACME",
+        "Opciones detectadas desde metadata documental.",
+    )
+    document_type_filter = _metadata_filter(
+        "Tipo documental",
+        "document_type",
+        filter_options["document_type"],
+        "Ej. SOP",
+        "Tipos documentales detectados desde metadata.",
+        default_value=_document_type_filter_value(mode_document_type),
+    )
+    audit_filter = _metadata_filter(
+        "Auditoria / hallazgo",
+        "audit",
+        filter_options["audit"],
+        "Ej. AUD-2026-014",
+        "Codigos de auditoria detectados desde metadata.",
+    )
+    date_from_filter = st.date_input("Fecha desde", value=None, format="YYYY-MM-DD", help="Fecha minima documental o efectiva.")
+    date_to_filter = st.date_input("Fecha hasta", value=None, format="YYYY-MM-DD", help="Fecha maxima documental o efectiva.")
 
     health = st.session_state.openai_health
     if health.ok:

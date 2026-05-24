@@ -2,6 +2,8 @@ from quality_intelligence.db import (
     build_filter_clause,
     chunk_metadata_column_values,
     document_metadata_json,
+    empty_filter_options,
+    filter_option_expressions,
     metadata_column_values,
     validate_identifier,
     vector_literal,
@@ -70,6 +72,17 @@ def test_document_metadata_json_is_sql_expression_not_function_call():
     assert "jsonb_build_object" in expression
     assert "d.document_type_code" in expression
     assert "document_metadata_json" not in expression
+
+
+def test_filter_option_helpers_cover_operational_fields():
+    empty = empty_filter_options()
+    expressions = filter_option_expressions()
+
+    expected = {"plant", "process", "product", "customer", "document_type", "audit"}
+    assert set(empty) == expected
+    assert set(expressions) == expected
+    assert "d.plant_code" in expressions["plant"]
+    assert "d.metadata ->> 'audit_code'" in expressions["audit"]
 
 
 def test_identifier_and_vector_literal_validation():
