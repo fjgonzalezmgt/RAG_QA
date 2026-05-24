@@ -16,6 +16,7 @@ from loguru import logger
 from .config import Settings, get_settings
 from .db import VectorStore, validate_identifier
 from .embeddings import EmbeddingClient
+from .metadata_enrichment import MetadataEnrichmentClient
 from .pdf_loader import list_pdfs, load_pdf
 from .quality_metadata import infer_quality_metadata
 from .text_splitter import split_pages
@@ -175,17 +176,26 @@ class PDFIngestor:
                     result.errors.append(f"{pdf_path.name}: no extractable text found")
                     continue
 
-                _notify(progress, f"Embedding {pdf_path.name} ({len(chunks)} chunks)")
-                vectors = self.embeddings.embed_texts(
-                    [chunk.content for chunk in chunks],
-                    batch_size=self.settings.openai.embedding_batch_size,
-                )
-
                 document_metadata = {"pages": len(document.pages)}
                 if target_domain == "quality_intelligence":
                     document_metadata.update(infer_quality_metadata(pdf_path))
                 if superseded_id:
                     document_metadata["supersedes_document_id"] = superseded_id
+                if self.settings.rag.llm_metadata_enrichment:
+                    _notify(progress, f"Extracting metadata from {pdf_path.name}")
+                    enricher = MetadataEnrichmentClient(self.settings.openai)
+                    document_metadata = enricher.enrich_document(
+                        pdf_path=pdf_path,
+                        chunks=chunks,
+                        existing_metadata=document_metadata,
+                        max_chars=self.settings.rag.llm_metadata_max_chars,
+                    )
+
+                _notify(progress, f"Embedding {pdf_path.name} ({len(chunks)} chunks)")
+                vectors = self.embeddings.embed_texts(
+                    [chunk.content for chunk in chunks],
+                    batch_size=self.settings.openai.embedding_batch_size,
+                )
 
                 doc_id = store.insert_document(
                     domain=target_domain,

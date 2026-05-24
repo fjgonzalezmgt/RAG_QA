@@ -1,6 +1,7 @@
 from quality_intelligence.db import (
     build_filter_clause,
     chunk_metadata_column_values,
+    document_metadata_json,
     metadata_column_values,
     validate_identifier,
     vector_literal,
@@ -61,6 +62,14 @@ def test_build_filter_clause_can_include_obsolete():
     where_sql, _ = build_filter_clause("quality_intelligence", {"include_obsolete": "true"})
 
     assert "COALESCE(d.is_current, TRUE) IS TRUE" not in where_sql
+
+
+def test_document_metadata_json_is_sql_expression_not_function_call():
+    expression = document_metadata_json("d")
+
+    assert "jsonb_build_object" in expression
+    assert "d.document_type_code" in expression
+    assert "document_metadata_json" not in expression
 
 
 def test_identifier_and_vector_literal_validation():

@@ -747,6 +747,7 @@ class VectorStore:
         vector_type = qname(self.extensions_schema, "vector")
         query_vector = vector_literal(query_embedding)
         where_sql, where_params = build_filter_clause(domain, filters)
+        document_metadata = document_metadata_json("d")
 
         with self.connect() as conn:
             with conn.cursor() as cur:
@@ -765,7 +766,7 @@ class VectorStore:
                         c.page_start,
                         c.page_end,
                         c.content,
-                        document_metadata_json(d) || COALESCE(d.metadata, '{{}}'::jsonb) || COALESCE(c.metadata, '{{}}'::jsonb) AS metadata,
+                        {document_metadata} || COALESCE(d.metadata, '{{}}'::jsonb) || COALESCE(c.metadata, '{{}}'::jsonb) AS metadata,
                         1 - (c.embedding <=> %s::{vector_type}) AS score
                     FROM {chunks} c
                     JOIN {documents} d ON d.id = c.document_id
@@ -982,6 +983,91 @@ class VectorStore:
             conn.commit()
         logger.info("Saved retrieval session {} with {} evidence rows.", session_id, len(contexts))
         return session_id
+
+    def list_recent_sessions(self, limit: int = 20) -> list[dict[str, object]]:
+        """List recent retrieval sessions for UI traceability."""
+
+        table = qname(self.schema, "retrieval_sessions")
+        if not self._table_exists("retrieval_sessions"):
+            return []
+        with self.connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    f"""
+                    SELECT
+                        id,
+                        created_at,
+                        question,
+                        filters,
+                        prompt_profile,
+                        top_k,
+                        left(COALESCE(answer, ''), 900) AS answer_preview
+                    FROM {table}
+                    ORDER BY created_at DESC
+                    LIMIT %s
+                    """,
+                    (limit,),
+                )
+                rows = list(cur.fetchall())
+        return rows
+
+    def list_document_gaps(self, domain: str, limit: int = 100) -> list[dict[str, object]]:
+        """List indexed documents with missing operational/QMS metadata."""
+
+        documents = qname(self.schema, "documents")
+        chunks = qname(self.schema, "chunks")
+        if not self._table_exists("documents"):
+            return []
+        with self.connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    f"""
+                    SELECT
+                        d.file_name,
+                        d.document_type_code,
+                        d.revision,
+                        d.effective_date,
+                        d.approval_status,
+                        d.is_current,
+                        d.plant_code,
+                        d.process_code,
+                        d.product_code,
+                        d.customer_code,
+                        COUNT(c.id)::int AS chunks,
+                        ARRAY_REMOVE(ARRAY[
+                            CASE WHEN d.document_type_code IS NULL THEN 'tipo documental' END,
+                            CASE WHEN d.revision IS NULL THEN 'revision' END,
+                            CASE WHEN d.effective_date IS NULL THEN 'fecha efectiva' END,
+                            CASE WHEN d.approval_status IS NULL THEN 'aprobacion' END,
+                            CASE WHEN d.plant_code IS NULL THEN 'planta' END,
+                            CASE WHEN d.process_code IS NULL THEN 'proceso' END
+                        ], NULL) AS missing_metadata
+                    FROM {documents} d
+                    LEFT JOIN {chunks} c ON c.document_id = d.id
+                    WHERE d.domain = %s
+                    GROUP BY d.id
+                    HAVING cardinality(ARRAY_REMOVE(ARRAY[
+                        CASE WHEN d.document_type_code IS NULL THEN 'tipo documental' END,
+                        CASE WHEN d.revision IS NULL THEN 'revision' END,
+                        CASE WHEN d.effective_date IS NULL THEN 'fecha efectiva' END,
+                        CASE WHEN d.approval_status IS NULL THEN 'aprobacion' END,
+                        CASE WHEN d.plant_code IS NULL THEN 'planta' END,
+                        CASE WHEN d.process_code IS NULL THEN 'proceso' END
+                    ], NULL)) > 0
+                    ORDER BY cardinality(ARRAY_REMOVE(ARRAY[
+                        CASE WHEN d.document_type_code IS NULL THEN 'tipo documental' END,
+                        CASE WHEN d.revision IS NULL THEN 'revision' END,
+                        CASE WHEN d.effective_date IS NULL THEN 'fecha efectiva' END,
+                        CASE WHEN d.approval_status IS NULL THEN 'aprobacion' END,
+                        CASE WHEN d.plant_code IS NULL THEN 'planta' END,
+                        CASE WHEN d.process_code IS NULL THEN 'proceso' END
+                    ], NULL)) DESC, d.file_name
+                    LIMIT %s
+                    """,
+                    (domain, limit),
+                )
+                rows = list(cur.fetchall())
+        return rows
 
     def _try_create_vector_index(self) -> None:
         """Create an approximate vector index when pgvector supports it."""

@@ -76,7 +76,7 @@ def _bool_env(name: str, default: bool) -> bool:
     value = os.getenv(name)
     if value is None or value == "":
         return default
-    return value.strip().lower() in {"1", "true", "yes", "y", "si", "sí"}
+    return value.strip().lower() in {"1", "true", "yes", "y", "si"}
 
 
 def _optional_url_env(name: str) -> str | None:
@@ -243,6 +243,8 @@ class RagSettings:
     max_context_chars: int
     recursive_pdf_scan: bool
     pdf_text_fallback: bool
+    llm_metadata_enrichment: bool
+    llm_metadata_max_chars: int
 
 
 @dataclass(frozen=True)
@@ -298,5 +300,7 @@ def get_settings() -> Settings:
             max_context_chars=_int_env("RAG_MAX_CONTEXT_CHARS", 50000),
             recursive_pdf_scan=_bool_env("RAG_RECURSIVE_PDF_SCAN", True),
             pdf_text_fallback=_bool_env("RAG_PDF_TEXT_FALLBACK", True),
+            llm_metadata_enrichment=_bool_env("RAG_LLM_METADATA_ENRICHMENT", False),
+            llm_metadata_max_chars=_int_env("RAG_LLM_METADATA_MAX_CHARS", 12000),
         ),
     )

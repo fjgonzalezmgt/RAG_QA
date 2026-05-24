@@ -391,6 +391,10 @@ Variables RAG:
 - `RAG_RECURSIVE_PDF_SCAN`: incluye subcarpetas dentro del repositorio documental.
 - `RAG_PDF_TEXT_FALLBACK`: intenta fallback con `pdftotext` y, si esta instalado,
   OCR opcional con `ocrmypdf` cuando `pypdf` no extrae texto.
+- `RAG_LLM_METADATA_ENRICHMENT`: activa extraccion de metadata desde el contenido
+  del PDF usando LLM durante la ingesta.
+- `RAG_LLM_METADATA_MAX_CHARS`: maximo de texto del documento enviado al LLM para
+  extraer metadata documental.
 
 ## Instalacion
 
