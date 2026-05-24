@@ -84,7 +84,24 @@ class MetadataEnrichmentClient:
         existing_metadata: Mapping[str, object],
         max_chars: int,
     ) -> dict[str, object]:
-        """Return metadata merged with LLM suggestions."""
+        """Return metadata merged with LLM suggestions.
+
+        Parameters
+        ----------
+        pdf_path
+            Source PDF path used only for logging and traceability.
+        chunks
+            Extracted text chunks used to build the document sample.
+        existing_metadata
+            Metadata already inferred by deterministic extractors.
+        max_chars
+            Maximum number of text characters sent to the LLM.
+
+        Returns
+        -------
+        dict[str, object]
+            Merged document metadata.
+        """
 
         if not self.settings.has_real_api_key:
             logger.warning("LLM metadata enrichment skipped: OPENAI_API_KEY is missing or placeholder.")
@@ -113,7 +130,18 @@ class MetadataEnrichmentClient:
         return merged
 
     def _call_model(self, prompt: str) -> str:
-        """Call the configured model and return response text."""
+        """Call the configured model and return response text.
+
+        Parameters
+        ----------
+        prompt
+            Metadata extraction prompt.
+
+        Returns
+        -------
+        str
+            Raw response text from the configured model.
+        """
 
         if self.settings.chat_model.startswith(("gpt-5", "o")) and hasattr(self.client, "responses"):
             response = self.client.responses.create(
@@ -151,7 +179,20 @@ class MetadataEnrichmentClient:
 
 
 def build_document_sample(chunks: Sequence[TextChunk], max_chars: int) -> str:
-    """Build a representative text sample from the first chunks."""
+    """Build a representative text sample from the first chunks.
+
+    Parameters
+    ----------
+    chunks
+        Ordered chunks extracted from the document.
+    max_chars
+        Maximum number of characters to include.
+
+    Returns
+    -------
+    str
+        Prompt-ready text sample.
+    """
 
     parts: list[str] = []
     remaining = max(0, max_chars)
@@ -168,7 +209,20 @@ def build_document_sample(chunks: Sequence[TextChunk], max_chars: int) -> str:
 
 
 def build_metadata_prompt(file_name: str, sample: str) -> str:
-    """Build the extraction prompt."""
+    """Build the extraction prompt.
+
+    Parameters
+    ----------
+    file_name
+        Source file name used for traceability only.
+    sample
+        Text sample extracted from the document.
+
+    Returns
+    -------
+    str
+        Prompt instructing the LLM to return metadata JSON.
+    """
 
     fields = ", ".join(sorted(DOCUMENT_METADATA_FIELDS))
     return (
@@ -184,7 +238,25 @@ def build_metadata_prompt(file_name: str, sample: str) -> str:
 
 
 def parse_metadata_json(text: str) -> dict[str, object]:
-    """Parse and sanitize LLM JSON metadata."""
+    """Parse and sanitize LLM JSON metadata.
+
+    Parameters
+    ----------
+    text
+        Raw LLM response text.
+
+    Returns
+    -------
+    dict[str, object]
+        Validated metadata fields.
+
+    Raises
+    ------
+    ValueError
+        If the response does not contain a JSON object.
+    json.JSONDecodeError
+        If the extracted object is invalid JSON.
+    """
 
     raw = extract_json_object(text)
     parsed = json.loads(raw)
@@ -203,7 +275,23 @@ def parse_metadata_json(text: str) -> dict[str, object]:
 
 
 def extract_json_object(text: str) -> str:
-    """Extract the first JSON object from a model response."""
+    """Extract the first JSON object from a model response.
+
+    Parameters
+    ----------
+    text
+        Raw model response, optionally fenced as Markdown.
+
+    Returns
+    -------
+    str
+        JSON object text.
+
+    Raises
+    ------
+    ValueError
+        If no JSON object can be found.
+    """
 
     stripped = (text or "").strip()
     if stripped.startswith("```"):
@@ -217,7 +305,20 @@ def extract_json_object(text: str) -> str:
 
 
 def normalize_metadata_value(key: str, value: Any) -> object:
-    """Normalize one extracted metadata value."""
+    """Normalize one extracted metadata value.
+
+    Parameters
+    ----------
+    key
+        Metadata field name.
+    value
+        Raw value returned by the LLM.
+
+    Returns
+    -------
+    object
+        Normalized value, or None when unsupported or empty.
+    """
 
     if value is None:
         return None
@@ -235,7 +336,20 @@ def normalize_metadata_value(key: str, value: Any) -> object:
 
 
 def merge_metadata(existing: Mapping[str, object], suggested: Mapping[str, object]) -> dict[str, object]:
-    """Merge LLM metadata with file-content suggestions as the preferred source."""
+    """Merge LLM metadata with file-content suggestions as the preferred source.
+
+    Parameters
+    ----------
+    existing
+        Metadata already available before LLM enrichment.
+    suggested
+        Validated LLM-suggested metadata.
+
+    Returns
+    -------
+    dict[str, object]
+        Merged metadata with LLM audit details under ``llm_metadata``.
+    """
 
     merged = dict(existing)
     accepted: dict[str, object] = {}
@@ -265,7 +379,18 @@ def merge_metadata(existing: Mapping[str, object], suggested: Mapping[str, objec
 
 
 def extract_response_text(response: object) -> str:
-    """Extract text from an OpenAI Responses API object."""
+    """Extract text from an OpenAI Responses API object.
+
+    Parameters
+    ----------
+    response
+        OpenAI Responses API response object.
+
+    Returns
+    -------
+    str
+        Concatenated response text.
+    """
 
     output_text = getattr(response, "output_text", None)
     if output_text:

@@ -94,7 +94,15 @@ def main() -> int:
 
 
 def ensure_database(db, maintenance_db: str) -> None:
-    """Create the target database if it does not exist."""
+    """Create the target database if it does not exist.
+
+    Parameters
+    ----------
+    db
+        Database settings for the target database.
+    maintenance_db
+        Existing database used to issue ``CREATE DATABASE``.
+    """
 
     with psycopg.connect(
         host=db.host,

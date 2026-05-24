@@ -311,7 +311,13 @@ class VectorStore:
             conn.commit()
 
     def _create_audit_tables(self, cur) -> None:
-        """Create retrieval audit tables used by the Streamlit app."""
+        """Create retrieval audit tables used by the Streamlit app.
+
+        Parameters
+        ----------
+        cur
+            Active psycopg cursor.
+        """
 
         retrieval_sessions = qname(self.schema, "retrieval_sessions")
         retrieval_evidence = qname(self.schema, "retrieval_evidence")
@@ -439,7 +445,20 @@ class VectorStore:
         return deleted
 
     def mark_source_superseded(self, domain: str, source_path: str) -> str | None:
-        """Mark current rows for one source path as no longer current."""
+        """Mark current rows for one source path as no longer current.
+
+        Parameters
+        ----------
+        domain
+            Logical RAG domain.
+        source_path
+            Absolute path for the source document.
+
+        Returns
+        -------
+        str or None
+            Most recent superseded document id, when one existed.
+        """
 
         logger.info("Marking previous document versions as superseded. domain='{}', source_path='{}'.", domain, source_path)
         documents = qname(self.schema, "documents")
@@ -594,7 +613,13 @@ class VectorStore:
         return row["id"]
 
     def _ensure_dimension_values(self, metadata: Mapping[str, object]) -> None:
-        """Upsert lightweight dimension rows before filling FK-backed columns."""
+        """Upsert lightweight dimension rows before filling FK-backed columns.
+
+        Parameters
+        ----------
+        metadata
+            Document metadata containing optional dimension codes.
+        """
 
         dimensions = [
             ("plants", "plant_code", "plant_name", first_metadata_value(metadata, "plant_code", "plant")),
@@ -940,7 +965,28 @@ class VectorStore:
         answer: str,
         contexts: Sequence[object],
     ) -> int:
-        """Persist a RAG answer and the evidence chunks used to generate it."""
+        """Persist a RAG answer and the evidence chunks used to generate it.
+
+        Parameters
+        ----------
+        question
+            User-facing question.
+        filters
+            Operational filters active during retrieval.
+        prompt_profile
+            Prompt profile key used for answer generation.
+        top_k
+            Requested evidence count.
+        answer
+            Generated answer text.
+        contexts
+            Retrieved evidence contexts cited by the answer.
+
+        Returns
+        -------
+        int
+            Newly created retrieval session id.
+        """
 
         retrieval_sessions = qname(self.schema, "retrieval_sessions")
         retrieval_evidence = qname(self.schema, "retrieval_evidence")
@@ -985,7 +1031,18 @@ class VectorStore:
         return session_id
 
     def list_recent_sessions(self, limit: int = 20) -> list[dict[str, object]]:
-        """List recent retrieval sessions for UI traceability."""
+        """List recent retrieval sessions for UI traceability.
+
+        Parameters
+        ----------
+        limit
+            Maximum number of sessions to return.
+
+        Returns
+        -------
+        list[dict[str, object]]
+            Recent retrieval sessions ordered newest first.
+        """
 
         table = qname(self.schema, "retrieval_sessions")
         if not self._table_exists("retrieval_sessions"):
@@ -1012,7 +1069,20 @@ class VectorStore:
         return rows
 
     def list_document_gaps(self, domain: str, limit: int = 100) -> list[dict[str, object]]:
-        """List indexed documents with missing operational/QMS metadata."""
+        """List indexed documents with missing operational/QMS metadata.
+
+        Parameters
+        ----------
+        domain
+            Logical RAG domain to inspect.
+        limit
+            Maximum number of gap rows to return.
+
+        Returns
+        -------
+        list[dict[str, object]]
+            Documents with missing metadata fields and chunk counts.
+        """
 
         documents = qname(self.schema, "documents")
         chunks = qname(self.schema, "chunks")
@@ -1134,7 +1204,18 @@ class VectorStore:
             return
 
     def _table_exists(self, table_name: str) -> bool:
-        """Return whether a table exists in the domain schema."""
+        """Return whether a table exists in the domain schema.
+
+        Parameters
+        ----------
+        table_name
+            Unqualified table name.
+
+        Returns
+        -------
+        bool
+            True when the table exists in the configured schema.
+        """
 
         with self.connect() as conn:
             with conn.cursor() as cur:
@@ -1239,14 +1320,38 @@ def validate_identifier(value: str) -> str:
 
 
 def qident(identifier: str) -> str:
-    """Quote a validated PostgreSQL identifier."""
+    """Quote a validated PostgreSQL identifier.
+
+    Parameters
+    ----------
+    identifier
+        PostgreSQL identifier to validate and quote.
+
+    Returns
+    -------
+    str
+        Double-quoted SQL identifier.
+    """
 
     validate_identifier(identifier)
     return f'"{identifier}"'
 
 
 def qname(schema: str, name: str) -> str:
-    """Return a quoted schema-qualified object name."""
+    """Return a quoted schema-qualified object name.
+
+    Parameters
+    ----------
+    schema
+        Schema name.
+    name
+        Object name inside the schema.
+
+    Returns
+    -------
+    str
+        Schema-qualified object name.
+    """
 
     return f"{qident(schema)}.{qident(name)}"
 
@@ -1278,7 +1383,18 @@ def index_search_path(schema: str, extensions_schema: str) -> str:
 
 
 def parse_vector_dimension(vector_type: str | None) -> int | None:
-    """Parse ``vector(N)`` dimension text returned by PostgreSQL."""
+    """Parse ``vector(N)`` dimension text returned by PostgreSQL.
+
+    Parameters
+    ----------
+    vector_type
+        PostgreSQL formatted type string.
+
+    Returns
+    -------
+    int or None
+        Parsed vector dimension, or None when unavailable.
+    """
 
     match = re.match(r"vector\((\d+)\)", vector_type or "")
     if not match:
@@ -1287,7 +1403,20 @@ def parse_vector_dimension(vector_type: str | None) -> int | None:
 
 
 def vector_dimension_from_metadata(vector_type: str | None, type_modifier: int | None) -> int | None:
-    """Infer a pgvector column dimension from PostgreSQL metadata."""
+    """Infer a pgvector column dimension from PostgreSQL metadata.
+
+    Parameters
+    ----------
+    vector_type
+        PostgreSQL formatted type string.
+    type_modifier
+        PostgreSQL attribute type modifier.
+
+    Returns
+    -------
+    int or None
+        Inferred vector dimension.
+    """
 
     parsed = parse_vector_dimension(vector_type)
     if parsed is not None:
@@ -1387,7 +1516,18 @@ def chunk_compatibility_columns() -> list[str]:
 
 
 def metadata_column_values(metadata: Mapping[str, object]) -> dict[str, str | None]:
-    """Map flexible metadata JSON to typed document columns."""
+    """Map flexible metadata JSON to typed document columns.
+
+    Parameters
+    ----------
+    metadata
+        Flexible document metadata from file names, LLM extraction, or sidecars.
+
+    Returns
+    -------
+    dict[str, str or None]
+        Column-ready values keyed by document table column names.
+    """
 
     document_type = first_metadata_value(metadata, "document_type_code", "document_type", "doc_type")
     if document_type:
@@ -1418,7 +1558,18 @@ def metadata_column_values(metadata: Mapping[str, object]) -> dict[str, str | No
 
 
 def chunk_metadata_column_values(metadata: Mapping[str, object]) -> dict[str, object]:
-    """Map chunk metadata JSON to typed chunk columns."""
+    """Map chunk metadata JSON to typed chunk columns.
+
+    Parameters
+    ----------
+    metadata
+        Flexible chunk metadata inferred during text splitting.
+
+    Returns
+    -------
+    dict[str, object]
+        Column-ready values keyed by chunk table column names.
+    """
 
     key_terms = metadata.get("key_terms")
     if not isinstance(key_terms, list):
@@ -1439,7 +1590,20 @@ def chunk_metadata_column_values(metadata: Mapping[str, object]) -> dict[str, ob
 
 
 def first_metadata_value(metadata: Mapping[str, object], *keys: str) -> str | None:
-    """Return the first non-empty metadata value for a set of aliases."""
+    """Return the first non-empty metadata value for a set of aliases.
+
+    Parameters
+    ----------
+    metadata
+        Metadata mapping to inspect.
+    *keys
+        Candidate keys in priority order.
+
+    Returns
+    -------
+    str or None
+        First non-empty value converted to text.
+    """
 
     for key in keys:
         value = metadata.get(key)
@@ -1452,7 +1616,18 @@ def first_metadata_value(metadata: Mapping[str, object], *keys: str) -> str | No
 
 
 def iso_date_or_none(value: str | None) -> str | None:
-    """Return an ISO date string only when PostgreSQL can safely cast it."""
+    """Return an ISO date string only when PostgreSQL can safely cast it.
+
+    Parameters
+    ----------
+    value
+        Candidate date string.
+
+    Returns
+    -------
+    str or None
+        ISO date string when valid, otherwise None.
+    """
 
     if value and re.match(r"^\d{4}-\d{2}-\d{2}$", value):
         return value
@@ -1460,7 +1635,18 @@ def iso_date_or_none(value: str | None) -> str | None:
 
 
 def document_metadata_json(alias: str = "d") -> str:
-    """SQL expression that exposes typed document columns as JSON metadata."""
+    """SQL expression that exposes typed document columns as JSON metadata.
+
+    Parameters
+    ----------
+    alias
+        SQL alias for the documents table.
+
+    Returns
+    -------
+    str
+        SQL JSONB expression.
+    """
 
     return f"""
         jsonb_strip_nulls(jsonb_build_object(
@@ -1492,7 +1678,20 @@ def document_metadata_json(alias: str = "d") -> str:
 
 
 def build_filter_clause(domain: str, filters: Mapping[str, object] | None = None) -> tuple[str, list[object]]:
-    """Build a SQL WHERE clause for quality/operations metadata filters."""
+    """Build a SQL WHERE clause for quality/operations metadata filters.
+
+    Parameters
+    ----------
+    domain
+        Logical RAG domain.
+    filters
+        Optional operational metadata filters.
+
+    Returns
+    -------
+    tuple[str, list[object]]
+        SQL predicate and ordered parameter values.
+    """
 
     clauses = ["c.domain = %s", "c.embedding IS NOT NULL"]
     params: list[object] = [domain]
@@ -1556,7 +1755,18 @@ def quality_date_expression() -> str:
 
 
 def normalize_filter_value(value: object) -> str:
-    """Normalize Streamlit/CLI filter values into a compact string."""
+    """Normalize Streamlit/CLI filter values into a compact string.
+
+    Parameters
+    ----------
+    value
+        Raw filter value.
+
+    Returns
+    -------
+    str
+        Normalized value, or an empty string for inactive filters.
+    """
 
     if value is None:
         return ""

@@ -227,7 +227,15 @@ class PDFIngestor:
 
 
 def _notify(progress: ProgressCallback | None, message: str) -> None:
-    """Send a progress message when a callback is available."""
+    """Send a progress message when a callback is available.
+
+    Parameters
+    ----------
+    progress
+        Optional callback used by CLI or Streamlit.
+    message
+        User-facing progress message.
+    """
 
     if progress:
         progress(message)

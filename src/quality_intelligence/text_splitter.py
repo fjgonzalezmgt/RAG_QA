@@ -104,13 +104,39 @@ def split_pages(
 
 
 def estimate_tokens(text: str) -> int:
-    """Estimate token count from character length."""
+    """Estimate token count from character length.
+
+    Parameters
+    ----------
+    text
+        Text content to estimate.
+
+    Returns
+    -------
+    int
+        Approximate token count.
+    """
 
     return max(1, len(text) // 4)
 
 
 def chunk_metadata(content: str, page_start: int, page_end: int) -> dict[str, object]:
-    """Infer lightweight operational metadata from chunk text."""
+    """Infer lightweight operational metadata from chunk text.
+
+    Parameters
+    ----------
+    content
+        Chunk text.
+    page_start
+        First source page covered by the chunk.
+    page_end
+        Last source page covered by the chunk.
+
+    Returns
+    -------
+    dict[str, object]
+        Inferred metadata for the chunk.
+    """
 
     metadata: dict[str, object] = {"page_start": page_start, "page_end": page_end}
     section = detect_section(content)
@@ -129,7 +155,18 @@ def chunk_metadata(content: str, page_start: int, page_end: int) -> dict[str, ob
 
 
 def detect_section(content: str) -> dict[str, str]:
-    """Detect a probable section heading or clause reference."""
+    """Detect a probable section heading or clause reference.
+
+    Parameters
+    ----------
+    content
+        Chunk text to inspect.
+
+    Returns
+    -------
+    dict[str, str]
+        Section metadata, or an empty dictionary.
+    """
 
     for line in content.splitlines()[:8]:
         cleaned = line.strip()
@@ -147,7 +184,18 @@ def detect_section(content: str) -> dict[str, str]:
 
 
 def detect_requirement_type(content: str) -> str | None:
-    """Classify common QMS requirement language."""
+    """Classify common QMS requirement language.
+
+    Parameters
+    ----------
+    content
+        Chunk text to classify.
+
+    Returns
+    -------
+    str or None
+        Requirement category when detected.
+    """
 
     lowered = content.lower()
     if any(term in lowered for term in ("shall", "must", "debe ", "debera", "obligatorio", "required")):
@@ -162,7 +210,18 @@ def detect_requirement_type(content: str) -> str | None:
 
 
 def detect_key_terms(content: str) -> list[str]:
-    """Extract a small controlled vocabulary useful for filtering and review."""
+    """Extract a small controlled vocabulary useful for filtering and review.
+
+    Parameters
+    ----------
+    content
+        Chunk text to inspect.
+
+    Returns
+    -------
+    list[str]
+        Matched key terms.
+    """
 
     terms = []
     vocabulary = [
@@ -188,7 +247,18 @@ def detect_key_terms(content: str) -> list[str]:
 
 
 def detect_entities(content: str) -> dict[str, list[str]]:
-    """Detect common quality-system identifiers."""
+    """Detect common quality-system identifiers.
+
+    Parameters
+    ----------
+    content
+        Chunk text to inspect.
+
+    Returns
+    -------
+    dict[str, list[str]]
+        Detected entity values grouped by entity type.
+    """
 
     patterns = {
         "capa": r"\bCAPA[-_ ]?\d{4}[-_ ]?\d+\b",
@@ -205,7 +275,18 @@ def detect_entities(content: str) -> dict[str, list[str]]:
 
 
 def _build_full_text(pages: list[PageText]) -> tuple[str, list[tuple[int, int, int]]]:
-    """Concatenate pages and track character spans by page."""
+    """Concatenate pages and track character spans by page.
+
+    Parameters
+    ----------
+    pages
+        Page texts extracted from a PDF.
+
+    Returns
+    -------
+    tuple[str, list[tuple[int, int, int]]]
+        Full normalized text and page character spans.
+    """
 
     parts: list[str] = []
     spans: list[tuple[int, int, int]] = []
@@ -227,7 +308,18 @@ def _build_full_text(pages: list[PageText]) -> tuple[str, list[tuple[int, int, i
 
 
 def _normalize_text(text: str) -> str:
-    """Normalize line whitespace while preserving paragraph breaks."""
+    """Normalize line whitespace while preserving paragraph breaks.
+
+    Parameters
+    ----------
+    text
+        Raw page text.
+
+    Returns
+    -------
+    str
+        Normalized page text.
+    """
 
     lines = [line.strip() for line in text.replace("\r", "\n").split("\n")]
     compact: list[str] = []
@@ -244,7 +336,22 @@ def _normalize_text(text: str) -> str:
 
 
 def _snap_to_boundary(text: str, start: int, raw_end: int) -> int:
-    """Move a chunk boundary to a nearby sentence or whitespace boundary."""
+    """Move a chunk boundary to a nearby sentence or whitespace boundary.
+
+    Parameters
+    ----------
+    text
+        Full document text.
+    start
+        Chunk start offset.
+    raw_end
+        Initial chunk end offset.
+
+    Returns
+    -------
+    int
+        Adjusted chunk end offset.
+    """
 
     if raw_end >= len(text):
         return len(text)
@@ -257,7 +364,22 @@ def _snap_to_boundary(text: str, start: int, raw_end: int) -> int:
 
 
 def _pages_for_range(spans: list[tuple[int, int, int]], start: int, end: int) -> tuple[int, int]:
-    """Return page span overlapping a character range."""
+    """Return page span overlapping a character range.
+
+    Parameters
+    ----------
+    spans
+        Character spans by page.
+    start
+        Character range start.
+    end
+        Character range end.
+
+    Returns
+    -------
+    tuple[int, int]
+        First and last page overlapping the range.
+    """
 
     pages = [page for span_start, span_end, page in spans if span_start < end and span_end > start]
     if not pages:

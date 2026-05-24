@@ -116,7 +116,20 @@ class LLMClient:
         return answer
 
     def _answer_with_responses(self, system_prompt: str, user_prompt: str) -> str:
-        """Generate an answer through the Responses API for GPT-5 models."""
+        """Generate an answer through the Responses API for GPT-5 models.
+
+        Parameters
+        ----------
+        system_prompt
+            Developer/system instruction for the answer.
+        user_prompt
+            Prompt containing question, history, and retrieved evidence.
+
+        Returns
+        -------
+        str
+            Generated answer text.
+        """
 
         request = {
             "model": self.settings.chat_model,
@@ -142,7 +155,20 @@ class LLMClient:
         return answer
 
     def _answer_with_chat_fallback(self, system_prompt: str, user_prompt: str) -> str:
-        """Fallback for older SDK versions."""
+        """Fallback for older SDK versions.
+
+        Parameters
+        ----------
+        system_prompt
+            Developer/system instruction for the answer.
+        user_prompt
+            Prompt containing question, history, and retrieved evidence.
+
+        Returns
+        -------
+        str
+            Generated answer text.
+        """
 
         response = self.client.chat.completions.create(
             model=self.settings.chat_model,
@@ -239,19 +265,52 @@ def build_history_block(chat_history: list[dict[str, str]], max_turns: int = 6, 
 
 
 def supports_temperature(model: str) -> bool:
-    """Return whether a model should receive ``temperature``."""
+    """Return whether a model should receive ``temperature``.
+
+    Parameters
+    ----------
+    model
+        Chat model name.
+
+    Returns
+    -------
+    bool
+        True when the request should include temperature.
+    """
 
     return not model.startswith("gpt-5")
 
 
 def prefers_responses_api(model: str) -> bool:
-    """Return whether the model family should use Responses API semantics."""
+    """Return whether the model family should use Responses API semantics.
+
+    Parameters
+    ----------
+    model
+        Model name.
+
+    Returns
+    -------
+    bool
+        True for reasoning-oriented model families.
+    """
 
     return model.startswith("gpt-5") or model.startswith("o")
 
 
 def format_metadata(metadata: dict[str, object]) -> str:
-    """Format operational metadata for prompt context headers."""
+    """Format operational metadata for prompt context headers.
+
+    Parameters
+    ----------
+    metadata
+        Search-result metadata.
+
+    Returns
+    -------
+    str
+        Compact pipe-separated metadata string.
+    """
 
     parts: list[str] = []
     for key in (
@@ -275,7 +334,18 @@ def format_metadata(metadata: dict[str, object]) -> str:
 
 
 def extract_response_text(response: object) -> str:
-    """Extract text from an OpenAI Responses API object."""
+    """Extract text from an OpenAI Responses API object.
+
+    Parameters
+    ----------
+    response
+        OpenAI Responses API response object.
+
+    Returns
+    -------
+    str
+        Concatenated response text.
+    """
 
     output_text = getattr(response, "output_text", None)
     if output_text:
@@ -291,7 +361,18 @@ def extract_response_text(response: object) -> str:
 
 
 def instruction_role(model: str) -> str:
-    """Return the instruction role expected by a model family."""
+    """Return the instruction role expected by a model family.
+
+    Parameters
+    ----------
+    model
+        Model name.
+
+    Returns
+    -------
+    str
+        Role used for top-level instructions.
+    """
 
     if model.startswith("gpt-5") or model.startswith("o"):
         return "developer"
@@ -299,7 +380,18 @@ def instruction_role(model: str) -> str:
 
 
 def _build_client(settings: OpenAISettings) -> OpenAI:
-    """Create an OpenAI SDK client with validated base URL."""
+    """Create an OpenAI SDK client with validated base URL.
+
+    Parameters
+    ----------
+    settings
+        OpenAI settings.
+
+    Returns
+    -------
+    OpenAI
+        Configured OpenAI SDK client.
+    """
 
     base_url = settings.base_url or DEFAULT_OPENAI_BASE_URL
     validate_base_url(base_url)

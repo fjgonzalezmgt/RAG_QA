@@ -102,7 +102,18 @@ class EmbeddingClient:
         return self.embed_texts([text], batch_size=1)[0]
 
     def _embedding_request(self, batch: list[str]) -> dict[str, object]:
-        """Build an embeddings API request payload."""
+        """Build an embeddings API request payload.
+
+        Parameters
+        ----------
+        batch
+            Normalized text batch.
+
+        Returns
+        -------
+        dict[str, object]
+            Request payload for the embeddings API.
+        """
 
         request: dict[str, object] = {
             "model": self.settings.embedding_model,
@@ -120,7 +131,18 @@ class EmbeddingClient:
 
 
 def _build_client(settings: OpenAISettings) -> OpenAI:
-    """Create an OpenAI SDK client with an explicit base URL."""
+    """Create an OpenAI SDK client with an explicit base URL.
+
+    Parameters
+    ----------
+    settings
+        OpenAI settings.
+
+    Returns
+    -------
+    OpenAI
+        Configured OpenAI SDK client.
+    """
 
     base_url = settings.base_url or DEFAULT_OPENAI_BASE_URL
     validate_base_url(base_url)
@@ -129,19 +151,52 @@ def _build_client(settings: OpenAISettings) -> OpenAI:
 
 
 def normalize_embedding_text(text: str) -> str:
-    """Normalize whitespace before embedding text."""
+    """Normalize whitespace before embedding text.
+
+    Parameters
+    ----------
+    text
+        Raw text to normalize.
+
+    Returns
+    -------
+    str
+        Text with compact whitespace.
+    """
 
     return " ".join((text or "").split())
 
 
 def supports_dimensions(model: str) -> bool:
-    """Return whether an embedding model supports custom dimensions."""
+    """Return whether an embedding model supports custom dimensions.
+
+    Parameters
+    ----------
+    model
+        Embedding model name.
+
+    Returns
+    -------
+    bool
+        True when the model supports the ``dimensions`` parameter.
+    """
 
     return model.startswith("text-embedding-3")
 
 
 def validate_base_url(base_url: str) -> None:
-    """Validate that a base URL is absolute and HTTP(S)."""
+    """Validate that a base URL is absolute and HTTP(S).
+
+    Parameters
+    ----------
+    base_url
+        OpenAI-compatible API base URL.
+
+    Raises
+    ------
+    ValueError
+        If the URL is not absolute HTTP(S).
+    """
 
     parsed = urlparse(base_url)
     if parsed.scheme not in {"http", "https"} or not parsed.netloc:

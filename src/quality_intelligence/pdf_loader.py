@@ -155,7 +155,18 @@ def list_pdfs(pdf_dir: Path, recursive: bool = True) -> list[Path]:
 
 
 def extract_text_with_pdftotext(path: Path) -> str:
-    """Try Poppler's pdftotext as a pragmatic fallback for difficult PDFs."""
+    """Try Poppler's pdftotext as a pragmatic fallback for difficult PDFs.
+
+    Parameters
+    ----------
+    path
+        PDF path to extract.
+
+    Returns
+    -------
+    str
+        Extracted text, or an empty string when extraction fails.
+    """
 
     try:
         completed = subprocess.run(
@@ -175,7 +186,18 @@ def extract_text_with_pdftotext(path: Path) -> str:
 
 
 def extract_text_with_ocrmypdf(path: Path) -> str:
-    """Run optional OCR through ocrmypdf when the command is installed."""
+    """Run optional OCR through ocrmypdf when the command is installed.
+
+    Parameters
+    ----------
+    path
+        PDF path to OCR.
+
+    Returns
+    -------
+    str
+        OCR-extracted text, or an empty string when OCR is unavailable.
+    """
 
     with tempfile.TemporaryDirectory(prefix="quality_ocr_") as temp_dir:
         output_path = Path(temp_dir) / "ocr.pdf"
@@ -197,14 +219,36 @@ def extract_text_with_ocrmypdf(path: Path) -> str:
 
 
 def split_pdftotext_pages(text: str) -> list[str]:
-    """Split pdftotext output into page-sized strings when form feeds exist."""
+    """Split pdftotext output into page-sized strings when form feeds exist.
+
+    Parameters
+    ----------
+    text
+        Raw text returned by pdftotext.
+
+    Returns
+    -------
+    list[str]
+        Non-empty page texts.
+    """
 
     pages = [page.strip() for page in text.split("\f")]
     return [page for page in pages if page]
 
 
 def _clean_metadata_value(value: object) -> str | None:
-    """Normalize optional PDF metadata values."""
+    """Normalize optional PDF metadata values.
+
+    Parameters
+    ----------
+    value
+        Raw PDF metadata value.
+
+    Returns
+    -------
+    str or None
+        Cleaned metadata value.
+    """
 
     if value is None:
         return None

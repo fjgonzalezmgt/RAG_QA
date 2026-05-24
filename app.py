@@ -76,7 +76,18 @@ DOCUMENT_TYPE_FILTER_VALUES = {
 
 
 def _active_filters(raw_filters: dict[str, object]) -> dict[str, str]:
-    """Return only populated operational filters."""
+    """Return only populated operational filters.
+
+    Parameters
+    ----------
+    raw_filters
+        Mapping of UI filter names to raw Streamlit values.
+
+    Returns
+    -------
+    dict[str, str]
+        Filter values converted to non-empty strings.
+    """
 
     active: dict[str, str] = {}
     for key, value in raw_filters.items():
@@ -87,19 +98,52 @@ def _active_filters(raw_filters: dict[str, object]) -> dict[str, str]:
 
 
 def _date_filter_value(value: date | None) -> str:
-    """Return ISO date text for optional Streamlit date inputs."""
+    """Return ISO date text for optional Streamlit date inputs.
+
+    Parameters
+    ----------
+    value
+        Optional date selected in the UI.
+
+    Returns
+    -------
+    str
+        ISO date text or an empty string.
+    """
 
     return value.isoformat() if value else ""
 
 
 def _document_type_filter_value(value: str) -> str:
-    """Normalize display labels to metadata document type codes."""
+    """Normalize display labels to metadata document type codes.
+
+    Parameters
+    ----------
+    value
+        UI label or already-normalized document type code.
+
+    Returns
+    -------
+    str
+        Metadata document type code used by retrieval filters.
+    """
 
     return DOCUMENT_TYPE_FILTER_VALUES.get(value, value)
 
 
 def _source_caption(item) -> str:
-    """Build a compact evidence caption for the UI."""
+    """Build a compact evidence caption for the UI.
+
+    Parameters
+    ----------
+    item
+        Retrieved context item containing a search result and citation.
+
+    Returns
+    -------
+    str
+        One-line source caption with score and key metadata.
+    """
 
     metadata = item.result.metadata or {}
     parts = [f"score={item.result.score:.3f}", item.result.file_name]
@@ -111,7 +155,18 @@ def _source_caption(item) -> str:
 
 
 def _quality_score(contexts) -> tuple[str, int, list[str]]:
-    """Estimate document-confidence signal from retrieved evidence metadata."""
+    """Estimate document-confidence signal from retrieved evidence metadata.
+
+    Parameters
+    ----------
+    contexts
+        Retrieved evidence contexts used in an answer.
+
+    Returns
+    -------
+    tuple[str, int, list[str]]
+        Confidence label, numeric score, and detected metadata issues.
+    """
 
     if not contexts:
         return "Baja", 0, ["No se recupero evidencia documental."]
@@ -154,7 +209,17 @@ def _quality_score(contexts) -> tuple[str, int, list[str]]:
 
 
 def _render_confidence(label: str, points: int, issues: list[str]) -> None:
-    """Render document confidence signal."""
+    """Render document confidence signal.
+
+    Parameters
+    ----------
+    label
+        Human-readable confidence label.
+    points
+        Numeric confidence score from 0 to 100.
+    issues
+        Metadata or evidence gaps to show in an expander.
+    """
 
     if label == "Alta":
         st.success(f"Confiabilidad documental: {label} ({points}/100)")
@@ -169,7 +234,13 @@ def _render_confidence(label: str, points: int, issues: list[str]) -> None:
 
 
 def _render_source_card(item) -> None:
-    """Render one retrieved source with operational metadata."""
+    """Render one retrieved source with operational metadata.
+
+    Parameters
+    ----------
+    item
+        Retrieved context item to display as evidence.
+    """
 
     metadata = item.result.metadata or {}
     st.markdown(f"**{item.citation}**")
@@ -192,7 +263,28 @@ def _render_source_card(item) -> None:
 
 
 def _briefing_markdown(question: str, answer: str, contexts, label: str, points: int, issues: list[str]) -> str:
-    """Build an exportable Markdown briefing."""
+    """Build an exportable Markdown briefing.
+
+    Parameters
+    ----------
+    question
+        User question.
+    answer
+        Generated answer.
+    contexts
+        Retrieved evidence contexts.
+    label
+        Document confidence label.
+    points
+        Document confidence score.
+    issues
+        Metadata or evidence gaps.
+
+    Returns
+    -------
+    str
+        Markdown content ready for download.
+    """
 
     lines = [
         "# Quality Intelligence Briefing",

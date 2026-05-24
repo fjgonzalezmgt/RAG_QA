@@ -71,7 +71,20 @@ def _float_env(name: str, default: float) -> float:
 
 
 def _bool_env(name: str, default: bool) -> bool:
-    """Read a boolean environment variable."""
+    """Read a boolean environment variable.
+
+    Parameters
+    ----------
+    name
+        Environment variable name.
+    default
+        Value returned when the variable is empty or missing.
+
+    Returns
+    -------
+    bool
+        Parsed boolean value.
+    """
 
     value = os.getenv(name)
     if value is None or value == "":

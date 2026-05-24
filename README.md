@@ -190,8 +190,19 @@ respuestas basadas en evidencia, no opiniones genericas.
 - Retrieval semantico con diversificacion por documento.
 - Citas trazables tipo `[S1] Documento, pp. 4-5`, con metadata de revision,
   vigencia, aprobacion y contexto operativo cuando esta disponible.
-- Expansor de fuentes con score, archivo, metadata y extracto.
-- Inferencia inicial de metadata QMS desde nombres controlados de archivo.
+- Panel de evidencia con score, revision, vigencia, aprobacion, tipo documental,
+  paginas, contexto operativo y extracto.
+- Semaforo de confiabilidad documental basado en cantidad de evidencia,
+  vigencia, aprobacion, revision y fechas.
+- Modos de consulta: procedimiento, CAPA/causa raiz, auditoria, reclamo,
+  especificacion e indicadores/KPI.
+- Preguntas rapidas para resumen documental, brechas, auditoria, comparacion de
+  versiones y CAPA similares.
+- Explorador documental, vista de brechas y historial trazable de sesiones.
+- Exportacion de briefing en Markdown con respuesta, brechas y fuentes.
+- Inferencia inicial de metadata QMS desde nombres controlados de archivo como
+  fallback.
+- Enriquecimiento opcional de metadata desde el contenido del PDF usando LLM.
 - Esquema SQL extendido para trazabilidad, evidencia, eventos de calidad,
   auditorias, DMAIC, indicadores y decisiones.
 - Script para inicializar el esquema profesional `quality_intelligence`.
@@ -210,7 +221,7 @@ flowchart LR
 
     ING --> PDF["PDF loader"]
     ING --> SPL["Text splitter"]
-    ING --> META["Quality metadata"]
+    ING --> META["Quality metadata<br/>reglas + LLM opcional"]
     ING --> EMB["EmbeddingClient"]
     ING --> PG[("PostgreSQL RAG_DB<br/>quality_intelligence + pgvector")]
 
@@ -226,12 +237,14 @@ flowchart LR
 Flujo de trabajo:
 
 1. El usuario coloca documentos tecnicos en `quality_knowledge_base/`.
-2. La ingesta extrae texto, calcula hash, infiere metadata y genera chunks.
+2. La ingesta extrae texto, calcula hash, infiere metadata, opcionalmente la
+   enriquece con LLM desde el contenido del PDF y genera chunks.
 3. Los chunks se convierten en embeddings y se guardan en pgvector.
 4. El usuario consulta usando filtros operativos.
 5. El retriever combina similitud semantica, filtros y diversidad documental.
 6. El LLM genera una respuesta basada solo en evidencia recuperada.
-7. La UI muestra respuesta, citas, fuentes y metadata.
+7. La UI muestra respuesta, semaforo documental, citas, fuentes, brechas,
+   historial trazable y briefing exportable.
 
 ## Estructura del proyecto
 
@@ -248,6 +261,8 @@ Flujo de trabajo:
 - `src/quality_intelligence/ingest.py`: pipeline de ingesta.
 - `src/quality_intelligence/quality_metadata.py`: inferencia de metadata QMS desde nombres
   de archivo.
+- `src/quality_intelligence/metadata_enrichment.py`: extraccion opcional de
+  metadata desde contenido documental usando LLM y JSON validado.
 - `src/quality_intelligence/retriever.py`: retrieval y etiquetado de fuentes.
 - `src/quality_intelligence/llm.py`: prompt final y llamada al modelo.
 - `src/quality_intelligence/domain_profiles.py`: perfiles de dominio, incluyendo
@@ -339,10 +354,35 @@ Metadata por chunk:
 - `process_step`, `risk_signal`, `key_terms`.
 - IDs detectados: CAPA, auditoria, reclamo, lote, SKU o cliente.
 
-## Convencion de nombres para demo
+## Metadata automatica
 
-Para que la metadata inicial funcione sin cargar un maestro externo, coloca los
-PDFs en `quality_knowledge_base/` con esta convencion:
+La metadata puede venir de tres fuentes, en este orden practico:
+
+1. **Contenido del PDF con LLM**, cuando `RAG_LLM_METADATA_ENRICHMENT=true` o se
+   activa desde la UI. El modelo recibe una muestra del texto del documento y
+   devuelve JSON validado. El nombre del archivo se usa solo para trazabilidad,
+   no como evidencia.
+2. **Reglas deterministicas**, como fechas, codigos, secciones, entidades CAPA,
+   auditorias, SKU o lotes detectados en texto.
+3. **Nombre del archivo**, como fallback para demos o carpetas sin maestro
+   documental.
+
+Campos soportados a nivel documento:
+
+- `document_type`, `document_code`, `revision`, `lifecycle_status`.
+- `document_date`, `effective_date`, `review_due_date`.
+- `plant`, `process`, `product`, `customer`.
+- `owner_area`, `approval_status`, `approved_by`, `approved_at`.
+- `qms_process`, `risk_level`, `source_system`, `source_record_id`.
+- `confidentiality_level`.
+
+La metadata sugerida por LLM se guarda junto con una traza `llm_metadata` que
+incluye confianza, campos aceptados, campos sobrescritos y notas de evidencia.
+
+### Convencion de nombres para demo
+
+Si no usas enriquecimiento LLM ni metadata externa, puedes colocar PDFs en
+`quality_knowledge_base/` con esta convencion:
 
 ```text
 <document_type>__<plant>__<process>__<product-or-customer>__<code>__rev-<revision>.pdf
@@ -356,8 +396,8 @@ CAPA__PlantaNorte__Empaque__SKU-100__CAPA-2026-008__rev-01.pdf
 AUDIT__PlantaSur__Liberacion__Cliente-ACME__AUD-2026-014__rev-00.pdf
 ```
 
-En produccion, la metadata deberia venir de QMS, SharePoint, ERP, MES, LIMS,
-CRM, sistema de auditorias o sistema CAPA.
+En produccion, lo ideal es combinar LLM con metadata maestra de QMS, SharePoint,
+ERP, MES, LIMS, CRM, sistema de auditorias o sistema CAPA.
 
 ## Configuracion
 
@@ -405,6 +445,17 @@ conda env create -f environment.yml
 conda activate quality-intelligence
 ```
 
+El archivo `environment.yml` crea el entorno `quality-intelligence`. Si prefieres
+usar el entorno local existente `rag_qa`, instala las dependencias ahi:
+
+En este workspace tambien se ha validado un entorno Conda llamado `rag_qa`:
+
+```powershell
+conda install -n rag_qa -c conda-forge openai loguru psycopg python-dotenv pypdf streamlit poppler pytest -y
+```
+
+`poppler` instala `pdftotext`, usado como fallback de extraccion de texto.
+`ocrmypdf` es opcional; en Windows puede requerir dependencias adicionales.
 Tambien puedes usar `requirements.txt` con `pip` si prefieres otro entorno.
 
 ## Preparar PostgreSQL
@@ -421,13 +472,13 @@ CREATE DATABASE "RAG_DB";
 Luego aplica el esquema profesional:
 
 ```powershell
-conda run -n quality-intelligence python scripts\init_quality_schema.py --db-name RAG_DB
+conda run -n rag_qa python scripts\init_quality_schema.py --db-name RAG_DB
 ```
 
 Si el usuario tiene permiso para crear bases:
 
 ```powershell
-conda run -n quality-intelligence python scripts\init_quality_schema.py --db-name RAG_DB --create-db
+conda run -n rag_qa python scripts\init_quality_schema.py --db-name RAG_DB --create-db
 ```
 
 Desde Streamlit puedes usar **Inicializar BD** para preparar el indice
@@ -440,13 +491,13 @@ indicadores y decisiones.
 Coloca PDFs en `quality_knowledge_base/` y ejecuta:
 
 ```powershell
-conda run -n quality-intelligence python scripts\ingest_pdfs.py --pdf-dir .\quality_knowledge_base --domain quality_intelligence
+conda run -n rag_qa python scripts\ingest_pdfs.py --pdf-dir .\quality_knowledge_base --domain quality_intelligence
 ```
 
 Para reemplazar chunks de archivos ya indexados:
 
 ```powershell
-conda run -n quality-intelligence python scripts\ingest_pdfs.py --pdf-dir .\quality_knowledge_base --domain quality_intelligence --force
+conda run -n rag_qa python scripts\ingest_pdfs.py --pdf-dir .\quality_knowledge_base --domain quality_intelligence --force
 ```
 
 Tambien puedes usar el boton **Ingerir PDFs** desde Streamlit.
@@ -454,7 +505,7 @@ Tambien puedes usar el boton **Ingerir PDFs** desde Streamlit.
 ## Ejecutar Streamlit
 
 ```powershell
-conda run -n quality-intelligence streamlit run app.py --server.port 8501
+conda run -n rag_qa streamlit run app.py --server.port 8501
 ```
 
 O ejecuta `run_app.bat` en Windows.
@@ -462,12 +513,36 @@ O ejecuta `run_app.bat` en Windows.
 La interfaz incluye:
 
 - configuracion de dominio y carpeta documental;
-- controles de chunking y retrieval;
+- controles de chunking, retrieval y enriquecimiento de metadata con LLM;
 - prueba de conexion con OpenAI;
-- filtros operativos;
-- tabla de documentos indexados;
+- filtros operativos y toggle para incluir documentos obsoletos;
+- modos de consulta por caso operativo;
+- preguntas rapidas;
+- explorador de documentos indexados;
+- vista de brechas de metadata;
+- historial trazable de sesiones;
 - chat operacional;
-- fuentes con score, documento, pagina, metadata y extracto.
+- semaforo de confiabilidad documental;
+- fuentes con score, documento, pagina, revision, vigencia, aprobacion,
+  metadata y extracto;
+- exportacion de briefing en Markdown.
+
+## Tests
+
+La suite cubre helpers de metadata, chunking, filtros SQL, prompt/contexto LLM y
+enriquecimiento de metadata sin hacer llamadas reales a OpenAI.
+
+Ejecutar:
+
+```powershell
+conda run -n rag_qa pytest
+```
+
+Verificacion esperada:
+
+```text
+18 passed
+```
 
 ## Buenas practicas de uso
 
@@ -491,14 +566,17 @@ La interfaz incluye:
 
 ## Roadmap sugerido
 
-1. Base profesional: perfil `quality_intelligence`, filtros, metadata y esquema
-   QMS.
-2. Retrieval robusto: metadata externa, busqueda hibrida, reranking y penalizar
-   documentos obsoletos.
-3. Soporte a decisiones: registro de sesiones, evidencias y decisiones.
-4. Demo empresarial: dataset simulado realista con casos de auditoria, reclamo,
+1. Busqueda hibrida: combinar vector search con busqueda textual para codigos,
+   lotes, SKUs, normas y clausulas.
+2. Reranking especializado para priorizar evidencia vigente, aprobada y
+   aplicable al contexto operativo.
+3. Revision humana de metadata: pantalla para aceptar, corregir o rechazar
+   metadata sugerida por LLM antes de marcarla como aprobada.
+4. Registro avanzado de decisiones: responsables, fechas, riesgo, estado y
+   evidencia asociada.
+5. Demo empresarial: dataset simulado realista con casos de auditoria, reclamo,
    CAPA y DMAIC.
-5. Producto Quality Analytics: conectores QMS/SharePoint/ERP, permisos, evals,
+6. Producto Quality Analytics: conectores QMS/SharePoint/ERP, permisos, evals,
    monitoreo y despliegue controlado.
 
 ## Documentacion ampliada

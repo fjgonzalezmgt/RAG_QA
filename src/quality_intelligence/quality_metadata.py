@@ -39,6 +39,16 @@ def infer_quality_metadata(pdf_path: Path) -> dict[str, object]:
 
     Recommended pattern:
     ``<document_type>__<plant>__<process>__<product-or-customer>__<code>__rev-<revision>.pdf``
+
+    Parameters
+    ----------
+    pdf_path
+        Source PDF path.
+
+    Returns
+    -------
+    dict[str, object]
+        Metadata inferred from the file path.
     """
 
     metadata: dict[str, object] = {}
@@ -76,14 +86,36 @@ def infer_quality_metadata(pdf_path: Path) -> dict[str, object]:
 
 
 def normalize_document_type(value: str) -> str | None:
-    """Normalize a document type token."""
+    """Normalize a document type token.
+
+    Parameters
+    ----------
+    value
+        Raw document type token.
+
+    Returns
+    -------
+    str or None
+        Normalized document type code.
+    """
 
     key = re.sub(r"[^A-Za-z0-9]+", "_", value.strip()).upper().strip("_")
     return DOCUMENT_TYPE_ALIASES.get(key)
 
 
 def classify_product_or_customer(value: str) -> dict[str, str]:
-    """Classify the fourth file-name token as product or customer."""
+    """Classify the fourth file-name token as product or customer.
+
+    Parameters
+    ----------
+    value
+        Token from the controlled file name.
+
+    Returns
+    -------
+    dict[str, str]
+        Either product or customer metadata.
+    """
 
     lowered = value.lower()
     if lowered.startswith(("cliente-", "customer-", "cust-")):
@@ -92,7 +124,18 @@ def classify_product_or_customer(value: str) -> dict[str, str]:
 
 
 def find_revision(values: list[str]) -> str | None:
-    """Find a revision marker such as rev-03 or revision_2."""
+    """Find a revision marker such as rev-03 or revision_2.
+
+    Parameters
+    ----------
+    values
+        Candidate strings to inspect.
+
+    Returns
+    -------
+    str or None
+        Revision identifier when found.
+    """
 
     for value in values:
         match = re.search(r"\b(?:rev|revision|ver|version)[-_ ]?([A-Za-z0-9.]+)\b", value, flags=re.IGNORECASE)
@@ -102,14 +145,36 @@ def find_revision(values: list[str]) -> str | None:
 
 
 def find_iso_date(value: str) -> str | None:
-    """Find an ISO date in a string."""
+    """Find an ISO date in a string.
+
+    Parameters
+    ----------
+    value
+        String to inspect.
+
+    Returns
+    -------
+    str or None
+        ISO date when found.
+    """
 
     match = re.search(r"(?<!\d)(20\d{2}-\d{2}-\d{2})(?!\d)", value)
     return match.group(1) if match else None
 
 
 def clean_metadata_value(value: str) -> str:
-    """Normalize file-name metadata tokens for display and filtering."""
+    """Normalize file-name metadata tokens for display and filtering.
+
+    Parameters
+    ----------
+    value
+        Raw token value.
+
+    Returns
+    -------
+    str
+        Cleaned metadata token.
+    """
 
     text = value.strip().replace("_", " ")
     text = re.sub(r"\s+", " ", text)
