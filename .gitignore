@@ -8,3 +8,4 @@ quality_knowledge_base/*.pdf
 logs/
 *.log
 *.bat
+.vscode/
