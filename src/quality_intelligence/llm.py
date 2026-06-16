@@ -17,6 +17,11 @@ from .embeddings import validate_base_url
 from .retriever import RetrievedContext
 
 
+LOCAL_CONTEXT_CHAR_LIMIT = 18000
+LOCAL_HISTORY_CHAR_LIMIT = 1200
+RETRY_CONTEXT_CHAR_LIMITS = (24000, 12000, 8000, 4000)
+
+
 class LLMClient:
     """OpenAI-compatible chat client for final RAG answers.
 
@@ -75,32 +80,48 @@ class LLMClient:
             len(contexts),
             len(chat_history or []),
         )
-        context_text = build_context_block(contexts, max_context_chars)
-        if not context_text:
-            logger.warning("LLM answer skipped because retrieved context is empty.")
-            return "No encontre contexto relevante en la base vectorial para responder."
+        context_limits = context_char_limits(self.settings, max_context_chars)
+        last_context_error: Exception | None = None
 
-        history_text = build_history_block(chat_history or [])
-        user_prompt = (
-            "Pregunta:\n"
-            f"{question.strip()}\n\n"
-            "Historial reciente de la conversacion:\n"
-            f"{history_text}\n\n"
-            "Contexto recuperado:\n"
-            f"{context_text}\n\n"
-            "Instrucciones: responde con base en el contexto. Si el contexto no "
-            "alcanza, dilo explicitamente. Usa el historial solo para entender "
-            "referencias conversacionales, no como evidencia documental. Incluye "
-            "citas [S1], [S2] donde aplique."
-        )
+        for attempt, context_limit in enumerate(context_limits, start=1):
+            context_text = build_context_block(contexts, context_limit)
+            if not context_text:
+                logger.warning("LLM answer skipped because retrieved context is empty.")
+                return "No encontre contexto relevante en la base vectorial para responder."
+
+            history_text = build_history_block(
+                chat_history or [],
+                max_chars=history_char_limit(self.settings, attempt),
+            )
+            user_prompt = build_user_prompt(question, history_text, context_text)
+            try:
+                return self._answer_with_prompt(profile.system_prompt, user_prompt)
+            except Exception as exc:
+                if not is_context_length_error(exc) or attempt >= len(context_limits):
+                    raise
+                last_context_error = exc
+                logger.warning(
+                    "LLM prompt exceeded model context. Retrying with smaller context. "
+                    "attempt={}, next_context_chars={}, error={}",
+                    attempt,
+                    context_limits[attempt],
+                    exc,
+                )
+
+        if last_context_error:
+            raise last_context_error
+        raise RuntimeError("No LLM context budget was available for the answer.")
+
+    def _answer_with_prompt(self, system_prompt: str, user_prompt: str) -> str:
+        """Send a fully-built prompt to the configured chat endpoint."""
 
         if self.settings.uses_openai_responses_api:
-            return self._answer_with_responses(profile.system_prompt, user_prompt)
+            return self._answer_with_responses(system_prompt, user_prompt)
 
         request = {
             "model": self.settings.chat_model,
             "messages": [
-                {"role": instruction_role(self.settings.chat_model), "content": profile.system_prompt},
+                {"role": instruction_role(self.settings.chat_model), "content": system_prompt},
                 {"role": "user", "content": user_prompt},
             ],
         }
@@ -225,6 +246,23 @@ def build_context_block(contexts: list[RetrievedContext], max_chars: int) -> str
     return "\n\n---\n\n".join(blocks)
 
 
+def build_user_prompt(question: str, history_text: str, context_text: str) -> str:
+    """Build the user prompt sent to the LLM."""
+
+    return (
+        "Pregunta:\n"
+        f"{question.strip()}\n\n"
+        "Historial reciente de la conversacion:\n"
+        f"{history_text}\n\n"
+        "Contexto recuperado:\n"
+        f"{context_text}\n\n"
+        "Instrucciones: responde con base en el contexto. Si el contexto no "
+        "alcanza, dilo explicitamente. Usa el historial solo para entender "
+        "referencias conversacionales, no como evidencia documental. Incluye "
+        "citas [S1], [S2] donde aplique."
+    )
+
+
 def build_history_block(chat_history: list[dict[str, str]], max_turns: int = 6, max_chars: int = 4000) -> str:
     """Build a compact chat-history block.
 
@@ -264,6 +302,44 @@ def build_history_block(chat_history: list[dict[str, str]], max_turns: int = 6, 
             break
 
     return "\n".join(lines) if lines else "Sin historial previo."
+
+
+def context_char_limits(settings: OpenAISettings, requested_max_chars: int) -> list[int]:
+    """Return prompt context budgets, including smaller retry budgets."""
+
+    requested = max(0, int(requested_max_chars))
+    first_limit = min(requested, LOCAL_CONTEXT_CHAR_LIMIT) if settings.is_local_provider else requested
+    candidates = [first_limit, *RETRY_CONTEXT_CHAR_LIMITS]
+    limits: list[int] = []
+    for candidate in candidates:
+        if candidate <= 0:
+            continue
+        if limits and candidate >= limits[-1]:
+            continue
+        limits.append(candidate)
+    return limits
+
+
+def history_char_limit(settings: OpenAISettings, attempt: int) -> int:
+    """Return chat-history characters to include for an answer attempt."""
+
+    if settings.is_local_provider:
+        return LOCAL_HISTORY_CHAR_LIMIT if attempt == 1 else 500
+    return 4000 if attempt == 1 else 1000
+
+
+def is_context_length_error(exc: Exception) -> bool:
+    """Return whether an API error indicates the prompt exceeded context."""
+
+    message = str(exc).lower()
+    markers = (
+        "context length",
+        "n_ctx",
+        "n_keep",
+        "maximum context",
+        "too many tokens",
+    )
+    return any(marker in message for marker in markers)
 
 
 def supports_temperature(model: str) -> bool:

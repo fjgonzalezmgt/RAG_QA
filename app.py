@@ -30,7 +30,7 @@ from quality_intelligence.db import VectorStore, validate_identifier
 from quality_intelligence.domain_profiles import get_profile
 from quality_intelligence.embeddings import EmbeddingClient
 from quality_intelligence.ingest import PDFIngestor
-from quality_intelligence.llm import LLMClient
+from quality_intelligence.llm import LLMClient, LOCAL_CONTEXT_CHAR_LIMIT
 from quality_intelligence.logging import setup_logging
 from quality_intelligence.openai_health import check_model_provider_connection
 from quality_intelligence.retriever import RAGRetriever
@@ -567,6 +567,22 @@ with st.sidebar:
         value=base_settings.rag.max_chunks_per_document,
         help="Evita que un solo documento domine toda la evidencia.",
     )
+    context_default = (
+        min(base_settings.rag.max_context_chars, LOCAL_CONTEXT_CHAR_LIMIT)
+        if ai_settings.is_local_provider
+        else base_settings.rag.max_context_chars
+    )
+    max_context_chars = st.number_input(
+        "Contexto enviado al LLM",
+        min_value=4000,
+        max_value=80000,
+        value=int(context_default),
+        step=1000,
+        help=(
+            "Caracteres maximos de evidencia documental enviados al modelo. "
+            "Para LM Studio se usa un valor inicial menor para evitar exceder n_ctx."
+        ),
+    )
     chunk_size = st.number_input(
         "Tamano chunk",
         min_value=500,
@@ -695,6 +711,7 @@ rag_settings = replace(
     top_k=int(top_k),
     candidate_k=int(candidate_k),
     max_chunks_per_document=int(max_chunks_per_document),
+    max_context_chars=int(max_context_chars),
     chunk_size=int(chunk_size),
     chunk_overlap=int(chunk_overlap),
     recursive_pdf_scan=bool(recursive_pdf_scan),
