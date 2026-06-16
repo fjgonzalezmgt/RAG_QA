@@ -1,4 +1,4 @@
-"""OpenAI API connectivity checks used by the Streamlit UI."""
+"""OpenAI-compatible API connectivity checks used by the Streamlit UI."""
 
 from __future__ import annotations
 
@@ -7,13 +7,13 @@ from dataclasses import dataclass
 from loguru import logger
 from openai import OpenAI
 
-from .config import DEFAULT_OPENAI_BASE_URL, OpenAISettings
-from .embeddings import validate_base_url
+from .config import OpenAISettings
+from .embeddings import supports_dimensions, validate_base_url, validate_embedding_dimensions
 
 
 @dataclass(frozen=True)
 class OpenAIHealth:
-    """Result of an OpenAI API health check.
+    """Result of a model provider health check.
 
     Attributes
     ----------
@@ -27,8 +27,8 @@ class OpenAIHealth:
     message: str
 
 
-def check_openai_connection(settings: OpenAISettings) -> OpenAIHealth:
-    """Verify that the configured OpenAI API key and model are usable.
+def check_model_provider_connection(settings: OpenAISettings) -> OpenAIHealth:
+    """Verify that the configured provider, chat model, and embeddings work.
 
     Parameters
     ----------
@@ -42,17 +42,23 @@ def check_openai_connection(settings: OpenAISettings) -> OpenAIHealth:
     """
 
     if not settings.has_real_api_key:
-        logger.warning("OpenAI health check skipped: API key missing or placeholder.")
-        return OpenAIHealth(ok=False, message="OPENAI_API_KEY pendiente o placeholder.")
+        logger.warning("{} health check skipped: API key missing or placeholder.", settings.provider_label)
+        return OpenAIHealth(ok=False, message=f"{settings.provider_label}: API key pendiente o placeholder.")
 
-    base_url = settings.base_url or DEFAULT_OPENAI_BASE_URL
+    base_url = settings.effective_base_url
     validate_base_url(base_url)
-    kwargs: dict[str, str] = {"api_key": settings.api_key, "base_url": base_url}
+    kwargs: dict[str, str] = {"api_key": settings.effective_api_key, "base_url": base_url}
 
     try:
-        logger.info("Checking OpenAI API connectivity with model '{}' using base_url '{}'.", settings.chat_model, base_url)
+        logger.info(
+            "Checking {} connectivity with chat model '{}' and embedding model '{}' using base_url '{}'.",
+            settings.provider_label,
+            settings.chat_model,
+            settings.embedding_model,
+            base_url,
+        )
         client = OpenAI(**kwargs)
-        if settings.chat_model.startswith(("gpt-5", "o")) and hasattr(client, "responses"):
+        if settings.uses_openai_responses_api and hasattr(client, "responses"):
             client.responses.create(
                 model=settings.chat_model,
                 input="Responde solamente: ok",
@@ -65,8 +71,31 @@ def check_openai_connection(settings: OpenAISettings) -> OpenAIHealth:
                 messages=[{"role": "user", "content": "Responde solamente: ok"}],
                 max_tokens=5,
             )
-        logger.success("OpenAI API connectivity OK.")
-        return OpenAIHealth(ok=True, message=f"Conectado a OpenAI. Modelo disponible: {settings.chat_model}.")
+
+        embedding_request: dict[str, object] = {
+            "model": settings.embedding_model,
+            "input": ["ok"],
+        }
+        if supports_dimensions(settings.embedding_model):
+            embedding_request["dimensions"] = settings.embedding_dim
+        embedding_response = client.embeddings.create(**embedding_request)
+        embeddings = [item.embedding for item in sorted(embedding_response.data, key=lambda item: item.index)]
+        validate_embedding_dimensions(embeddings, settings.embedding_dim)
+
+        logger.success("{} connectivity OK.", settings.provider_label)
+        return OpenAIHealth(
+            ok=True,
+            message=(
+                f"Conectado a {settings.provider_label}. "
+                f"Chat: {settings.chat_model}. Embeddings: {settings.embedding_model}."
+            ),
+        )
     except Exception as exc:
-        logger.exception("OpenAI API connectivity check failed.")
-        return OpenAIHealth(ok=False, message=f"No se pudo conectar a OpenAI: {exc}")
+        logger.exception("{} connectivity check failed.", settings.provider_label)
+        return OpenAIHealth(ok=False, message=f"No se pudo conectar a {settings.provider_label}: {exc}")
+
+
+def check_openai_connection(settings: OpenAISettings) -> OpenAIHealth:
+    """Backward-compatible alias for existing imports."""
+
+    return check_model_provider_connection(settings)

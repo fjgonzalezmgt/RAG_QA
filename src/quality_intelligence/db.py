@@ -20,7 +20,7 @@ from loguru import logger
 from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 
-from .config import DatabaseSettings
+from .config import DatabaseSettings, MAX_EMBEDDING_DIM
 from .text_splitter import TextChunk
 
 
@@ -120,6 +120,10 @@ class VectorStore:
         self.embedding_dim = int(embedding_dim)
         if self.embedding_dim <= 0:
             raise ValueError("embedding_dim must be positive")
+        if self.embedding_dim > MAX_EMBEDDING_DIM:
+            raise ValueError(
+                f"embedding_dim must be {MAX_EMBEDDING_DIM} or lower for this PostgreSQL/pgvector setup"
+            )
 
     def connect(self):
         """Open a PostgreSQL connection.
@@ -1198,7 +1202,7 @@ class VectorStore:
                 "Skipping approximate vector indexes because pgvector HNSW/IVFFLAT support up to 2000 dimensions; current dimension is {}.",
                 self.embedding_dim,
             )
-            logger.warning("Use OPENAI_EMBEDDING_DIM=2000 with text-embedding-3-large to keep approximate indexes.")
+            logger.warning("Use an embedding dimension of 2000 or lower to keep approximate pgvector indexes.")
             return
 
         logger.info("Ensuring HNSW vector index for schema '{}'.", self.schema)

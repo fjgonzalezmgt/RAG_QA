@@ -11,7 +11,7 @@ from typing import Any
 from loguru import logger
 from openai import OpenAI
 
-from .config import DEFAULT_OPENAI_BASE_URL, OpenAISettings
+from .config import OpenAISettings
 from .embeddings import validate_base_url
 from .text_splitter import TextChunk
 
@@ -73,9 +73,9 @@ class MetadataEnrichmentClient:
 
     def __init__(self, settings: OpenAISettings):
         self.settings = settings
-        base_url = settings.base_url or DEFAULT_OPENAI_BASE_URL
+        base_url = settings.effective_base_url
         validate_base_url(base_url)
-        self.client = OpenAI(api_key=settings.api_key, base_url=base_url)
+        self.client = OpenAI(api_key=settings.effective_api_key, base_url=base_url)
 
     def enrich_document(
         self,
@@ -104,7 +104,10 @@ class MetadataEnrichmentClient:
         """
 
         if not self.settings.has_real_api_key:
-            logger.warning("LLM metadata enrichment skipped: OPENAI_API_KEY is missing or placeholder.")
+            logger.warning(
+                "LLM metadata enrichment skipped: {} API key is missing or placeholder.",
+                self.settings.provider_label,
+            )
             return dict(existing_metadata)
 
         sample = build_document_sample(chunks, max_chars=max_chars)
@@ -143,7 +146,7 @@ class MetadataEnrichmentClient:
             Raw response text from the configured model.
         """
 
-        if self.settings.chat_model.startswith(("gpt-5", "o")) and hasattr(self.client, "responses"):
+        if self.settings.uses_openai_responses_api and hasattr(self.client, "responses"):
             response = self.client.responses.create(
                 model=self.settings.chat_model,
                 input=[

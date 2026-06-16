@@ -1,8 +1,8 @@
 """Streamlit interface for the Quality Intelligence Assistant.
 
 The UI exposes configuration controls, PDF ingestion actions, indexed-document
-inspection, OpenAI connectivity checks, and a chat interface with short-term
-conversation memory.
+inspection, model-provider connectivity checks, and a chat interface with
+short-term conversation memory.
 """
 
 from __future__ import annotations
@@ -18,14 +18,21 @@ from loguru import logger
 ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT / "src"))
 
-from quality_intelligence.config import get_settings
+from quality_intelligence.config import (
+    DEFAULT_LM_STUDIO_BASE_URL,
+    MAX_EMBEDDING_DIM,
+    PROVIDER_LM_STUDIO,
+    PROVIDER_OPENAI,
+    get_settings,
+    provider_default_settings,
+)
 from quality_intelligence.db import VectorStore, validate_identifier
 from quality_intelligence.domain_profiles import get_profile
 from quality_intelligence.embeddings import EmbeddingClient
 from quality_intelligence.ingest import PDFIngestor
 from quality_intelligence.llm import LLMClient
 from quality_intelligence.logging import setup_logging
-from quality_intelligence.openai_health import check_openai_connection
+from quality_intelligence.openai_health import check_model_provider_connection
 from quality_intelligence.retriever import RAGRetriever
 
 
@@ -76,6 +83,12 @@ DOCUMENT_TYPE_FILTER_VALUES = {
     "Leccion aprendida": "LESSON_LEARNED",
     "Indicador": "KPI",
 }
+
+AI_PROVIDER_LABELS = {
+    PROVIDER_OPENAI: "OpenAI",
+    PROVIDER_LM_STUDIO: "LM Studio local",
+}
+AI_PROVIDER_BY_LABEL = {label: provider for provider, label in AI_PROVIDER_LABELS.items()}
 
 
 def _active_filters(raw_filters: dict[str, object]) -> dict[str, str]:
@@ -132,6 +145,20 @@ def _document_type_filter_value(value: str) -> str:
     """
 
     return DOCUMENT_TYPE_FILTER_VALUES.get(value, value)
+
+
+def _provider_health_signature(settings) -> tuple[object, ...]:
+    """Return the fields that invalidate a provider health check."""
+
+    return (
+        settings.normalized_provider,
+        settings.effective_base_url,
+        settings.chat_model,
+        settings.embedding_model,
+        settings.embedding_dim,
+        settings.embedding_document_prefix,
+        settings.embedding_query_prefix,
+    )
 
 
 def _source_caption(item) -> str:
@@ -369,11 +396,12 @@ base_settings = get_settings()
 if base_settings.rag.domain != QUALITY_INTELLIGENCE_DOMAIN:
     base_settings = replace(base_settings, rag=replace(base_settings.rag, domain=QUALITY_INTELLIGENCE_DOMAIN))
 logger.info(
-    "Settings loaded: db_host='{}', db_name='{}', domain='{}', pdf_dir='{}', chat_model='{}', embedding_model='{}'.",
+    "Settings loaded: db_host='{}', db_name='{}', domain='{}', pdf_dir='{}', provider='{}', chat_model='{}', embedding_model='{}'.",
     base_settings.db.host,
     base_settings.db.name,
     base_settings.rag.domain,
     base_settings.rag.pdf_dir,
+    base_settings.openai.provider_label,
     base_settings.openai.chat_model,
     base_settings.openai.embedding_model,
 )
@@ -382,10 +410,11 @@ if "messages" not in st.session_state:
     st.session_state.messages = []
 if "sources_by_turn" not in st.session_state:
     st.session_state.sources_by_turn = {}
-if "openai_health" not in st.session_state:
-    st.session_state.openai_health = check_openai_connection(base_settings.openai)
+if "model_provider_health" not in st.session_state:
+    st.session_state.model_provider_health = None
+if "model_provider_health_signature" not in st.session_state:
+    st.session_state.model_provider_health_signature = None
 
-filter_option_store = VectorStore(base_settings.db, QUALITY_INTELLIGENCE_DOMAIN, base_settings.openai.embedding_dim)
 filter_options: dict[str, list[str]] = {
     "plant": [],
     "process": [],
@@ -405,6 +434,117 @@ with st.sidebar:
     st.info("Dominio fijo: Quality Intelligence")
     domain = QUALITY_INTELLIGENCE_DOMAIN
 
+    st.divider()
+    st.header("Modelos")
+    provider_keys = [PROVIDER_OPENAI, PROVIDER_LM_STUDIO]
+    current_provider = base_settings.openai.normalized_provider
+    provider_label = st.radio(
+        "Proveedor",
+        [AI_PROVIDER_LABELS[key] for key in provider_keys],
+        index=provider_keys.index(current_provider) if current_provider in provider_keys else 0,
+        horizontal=True,
+        help="Cambia entre OpenAI y un servidor local compatible con OpenAI, como LM Studio.",
+    )
+    selected_provider = AI_PROVIDER_BY_LABEL[provider_label]
+    provider_seed = provider_default_settings(base_settings.openai, selected_provider)
+
+    base_url = st.text_input(
+        "Endpoint API",
+        value=provider_seed.effective_base_url,
+        help=(
+            "URL base compatible con OpenAI. Para LM Studio normalmente es "
+            f"{DEFAULT_LM_STUDIO_BASE_URL}."
+        ),
+        key=f"provider_base_url_{selected_provider}",
+    )
+    api_key = st.text_input(
+        "API key",
+        value=provider_seed.effective_api_key,
+        type="password",
+        help="LM Studio acepta una clave local ficticia como `lm-studio`; OpenAI requiere una clave real.",
+        key=f"provider_api_key_{selected_provider}",
+    )
+    chat_model = st.text_input(
+        "Modelo operacional",
+        value=provider_seed.chat_model,
+        help="Modelo usado para responder en el chat y para metadata LLM.",
+        key=f"provider_chat_model_{selected_provider}",
+    )
+    embedding_model = st.text_input(
+        "Modelo de embeddings",
+        value=provider_seed.embedding_model,
+        help="Modelo usado para indexar documentos y buscar consultas.",
+        key=f"provider_embedding_model_{selected_provider}",
+    )
+    embedding_dim = st.number_input(
+        "Dimension embeddings",
+        min_value=1,
+        max_value=MAX_EMBEDDING_DIM,
+        value=min(provider_seed.embedding_dim, MAX_EMBEDDING_DIM),
+        step=1,
+        help=(
+            "Debe coincidir con la dimension guardada en pgvector. "
+            f"El limite operativo de esta BD es {MAX_EMBEDDING_DIM}."
+        ),
+        key=f"provider_embedding_dim_{selected_provider}",
+    )
+    temperature = st.slider(
+        "Temperatura",
+        min_value=0.0,
+        max_value=2.0,
+        value=float(provider_seed.temperature),
+        step=0.05,
+        help="Creatividad del modelo cuando el endpoint la soporta.",
+        key=f"provider_temperature_{selected_provider}",
+    )
+    with st.expander("Embeddings avanzados"):
+        embedding_document_prefix = st.text_input(
+            "Prefijo documentos",
+            value=provider_seed.embedding_document_prefix,
+            help="Prefijo aplicado a chunks antes de crear embeddings. Nomic v2 recomienda `search_document: `.",
+            key=f"provider_document_prefix_{selected_provider}",
+        )
+        embedding_query_prefix = st.text_input(
+            "Prefijo consultas",
+            value=provider_seed.embedding_query_prefix,
+            help="Prefijo aplicado a preguntas antes de buscar. Nomic v2 recomienda `search_query: `.",
+            key=f"provider_query_prefix_{selected_provider}",
+        )
+
+    ai_settings = replace(
+        provider_seed,
+        api_key=api_key.strip() or provider_seed.effective_api_key,
+        base_url=base_url.strip().rstrip("/") if base_url.strip() else None,
+        chat_model=chat_model.strip() or provider_seed.chat_model,
+        embedding_model=embedding_model.strip() or provider_seed.embedding_model,
+        embedding_dim=int(embedding_dim),
+        temperature=float(temperature),
+        embedding_document_prefix=embedding_document_prefix,
+        embedding_query_prefix=embedding_query_prefix,
+    )
+    health_signature = _provider_health_signature(ai_settings)
+    if st.session_state.model_provider_health_signature != health_signature:
+        st.session_state.model_provider_health = None
+        st.session_state.model_provider_health_signature = health_signature
+
+    health = st.session_state.model_provider_health
+    if health is None:
+        st.info(f"{ai_settings.provider_label}: conexion sin probar.")
+    elif health.ok:
+        st.success(health.message)
+    else:
+        st.warning(health.message)
+
+    if st.button(
+        "Probar proveedor IA",
+        width="stretch",
+        help="Ejecuta llamadas cortas de chat y embeddings para validar endpoint y modelos.",
+    ):
+        st.session_state.model_provider_health = check_model_provider_connection(ai_settings)
+        st.session_state.model_provider_health_signature = health_signature
+        st.rerun()
+
+    st.divider()
     top_k = st.slider(
         "Evidencias recuperadas",
         min_value=1,
@@ -481,6 +621,7 @@ with st.sidebar:
         value=False,
         help="Activalo solo para comparar versiones o investigar historial.",
     )
+    filter_option_store = VectorStore(base_settings.db, QUALITY_INTELLIGENCE_DOMAIN, ai_settings.embedding_dim)
     try:
         filter_options = filter_option_store.list_filter_options(
             domain=QUALITY_INTELLIGENCE_DOMAIN,
@@ -540,16 +681,6 @@ with st.sidebar:
     date_from_filter = st.date_input("Fecha desde", value=None, format="YYYY-MM-DD", help="Fecha minima documental o efectiva.")
     date_to_filter = st.date_input("Fecha hasta", value=None, format="YYYY-MM-DD", help="Fecha maxima documental o efectiva.")
 
-    health = st.session_state.openai_health
-    if health.ok:
-        st.success(health.message)
-    else:
-        st.warning(health.message)
-
-    if st.button("Probar OpenAI API", width="stretch", help="Ejecuta una llamada corta para validar clave, endpoint y modelo."):
-        st.session_state.openai_health = check_openai_connection(base_settings.openai)
-        st.rerun()
-
     if st.button("Limpiar conversacion", width="stretch", help="Borra el historial visible de esta sesion Streamlit."):
         logger.info("Clearing chat conversation.")
         st.session_state.messages = []
@@ -570,7 +701,7 @@ rag_settings = replace(
     llm_metadata_enrichment=bool(llm_metadata_enrichment),
     llm_metadata_max_chars=int(llm_metadata_max_chars),
 )
-settings = replace(base_settings, rag=rag_settings)
+settings = replace(base_settings, openai=ai_settings, rag=rag_settings)
 quality_filters = _active_filters(
     {
         "plant": plant_filter,
@@ -600,7 +731,11 @@ embedding_client = EmbeddingClient(settings.openai)
 retriever = RAGRetriever(store, embedding_client)
 llm_client = LLMClient(settings.openai)
 profile = get_profile(settings.rag.domain)
-logger.info("Runtime components initialized for schema/domain '{}'.", settings.rag.domain)
+logger.info(
+    "Runtime components initialized for schema/domain '{}' with provider '{}'.",
+    settings.rag.domain,
+    settings.openai.provider_label,
+)
 
 left, right = st.columns([0.36, 0.64], gap="large")
 

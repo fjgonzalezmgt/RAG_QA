@@ -1,8 +1,9 @@
 """LLM answer generation for retrieved context.
 
 This module builds the final prompt from retrieved chunks and recent chat
-history, then calls OpenAI Chat Completions. The chat history is used only for
-conversation continuity; retrieved chunks remain the evidence source.
+history, then calls an OpenAI-compatible chat endpoint. The chat history is
+used only for conversation continuity; retrieved chunks remain the evidence
+source.
 """
 
 from __future__ import annotations
@@ -10,19 +11,19 @@ from __future__ import annotations
 from openai import OpenAI
 from loguru import logger
 
-from .config import DEFAULT_OPENAI_BASE_URL, OpenAISettings
+from .config import OpenAISettings
 from .domain_profiles import DomainProfile
 from .embeddings import validate_base_url
 from .retriever import RetrievedContext
 
 
 class LLMClient:
-    """OpenAI chat client for final RAG answers.
+    """OpenAI-compatible chat client for final RAG answers.
 
     Parameters
     ----------
     settings
-        OpenAI settings controlling model, reasoning effort, and verbosity.
+        Provider settings controlling model, reasoning effort, and verbosity.
     """
 
     def __init__(self, settings: OpenAISettings):
@@ -68,7 +69,8 @@ class LLMClient:
 
         self._require_api_key()
         logger.info(
-            "Generating LLM answer. model='{}', contexts={}, history_messages={}.",
+            "Generating LLM answer. provider='{}', model='{}', contexts={}, history_messages={}.",
+            self.settings.provider_label,
             self.settings.chat_model,
             len(contexts),
             len(chat_history or []),
@@ -92,7 +94,7 @@ class LLMClient:
             "citas [S1], [S2] donde aplique."
         )
 
-        if prefers_responses_api(self.settings.chat_model):
+        if self.settings.uses_openai_responses_api:
             return self._answer_with_responses(profile.system_prompt, user_prompt)
 
         request = {
@@ -183,7 +185,7 @@ class LLMClient:
         """Raise when no usable OpenAI API key is configured."""
 
         if not self.settings.has_real_api_key:
-            raise RuntimeError("OPENAI_API_KEY is missing or still has a placeholder value.")
+            raise RuntimeError(f"{self.settings.provider_label} API key is missing or still has a placeholder value.")
 
 
 def build_context_block(contexts: list[RetrievedContext], max_chars: int) -> str:
@@ -393,7 +395,7 @@ def _build_client(settings: OpenAISettings) -> OpenAI:
         Configured OpenAI SDK client.
     """
 
-    base_url = settings.base_url or DEFAULT_OPENAI_BASE_URL
+    base_url = settings.effective_base_url
     validate_base_url(base_url)
-    kwargs: dict[str, str] = {"api_key": settings.api_key, "base_url": base_url}
+    kwargs: dict[str, str] = {"api_key": settings.effective_api_key, "base_url": base_url}
     return OpenAI(**kwargs)

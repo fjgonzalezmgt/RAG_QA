@@ -3,7 +3,7 @@
 ![Python](https://img.shields.io/badge/Python-3.11+-3776AB?style=for-the-badge&logo=python&logoColor=white)
 ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-4169E1?style=for-the-badge&logo=postgresql&logoColor=white)
 ![pgvector](https://img.shields.io/badge/pgvector-HNSW%2FIVFFLAT-2C5F2D?style=for-the-badge&logo=postgresql&logoColor=white)
-![OpenAI](https://img.shields.io/badge/OpenAI-API-412991?style=for-the-badge&logo=openai&logoColor=white)
+![OpenAI compatible](https://img.shields.io/badge/OpenAI--compatible-API-412991?style=for-the-badge&logo=openai&logoColor=white)
 ![Streamlit](https://img.shields.io/badge/Streamlit-UI-FF4B4B?style=for-the-badge&logo=streamlit&logoColor=white)
 ![Conda](https://img.shields.io/badge/Conda-env-44A833?style=for-the-badge&logo=anaconda&logoColor=white)
 ![Windows](https://img.shields.io/badge/Windows-PowerShell-0078D6?style=for-the-badge&logo=windows&logoColor=white)
@@ -176,7 +176,9 @@ respuestas basadas en evidencia, no opiniones genericas.
 - Ingesta de PDFs con extraccion por pagina, hash SHA-256 y deduplicacion por
   contenido.
 - Chunking con solape configurable y conservacion de `page_start` / `page_end`.
-- Embeddings OpenAI almacenados en PostgreSQL + pgvector.
+- Embeddings OpenAI o locales almacenados en PostgreSQL + pgvector.
+- Selector de proveedor IA en Streamlit para alternar entre OpenAI y LM Studio
+  local compatible con la API de OpenAI.
 - Perfil especializado `quality_intelligence` para respuestas en contexto de
   calidad, manufactura, mejora continua y QMS. La UI esta fijada a este dominio
   para evitar mezclar esquemas o perfiles no validados.
@@ -230,7 +232,7 @@ flowchart LR
 
     RET --> EMB
     RET --> PG
-    LLM --> OAI["OpenAI API"]
+    LLM --> OAI["Proveedor IA<br/>OpenAI o LM Studio"]
     EMB --> OAI
 
     PG --> EV["Evidencia trazable<br/>documento + pagina + metadata"]
@@ -272,7 +274,7 @@ Flujo de trabajo:
   `quality_intelligence`.
 - `src/quality_intelligence/pdf_loader.py`: lectura y hashing de PDFs.
 - `src/quality_intelligence/text_splitter.py`: chunking con rango de paginas.
-- `src/quality_intelligence/embeddings.py`: cliente de embeddings OpenAI.
+- `src/quality_intelligence/embeddings.py`: cliente de embeddings OpenAI-compatible.
 
 ## Modelo de datos
 
@@ -415,8 +417,32 @@ RAG_DOMAIN=quality_intelligence
 RAG_PDF_DIR=./quality_knowledge_base
 OPENAI_CHAT_MODEL=gpt-5.2
 OPENAI_EMBEDDING_MODEL=text-embedding-3-large
-OPENAI_EMBEDDING_DIM=2000
+OPENAI_EMBEDDING_DIM=768
+AI_PROVIDER=openai
 ```
+
+Para usar modelos locales con LM Studio, inicia el servidor local compatible con
+OpenAI, carga los modelos y usa:
+
+```text
+AI_PROVIDER=lm_studio
+LM_STUDIO_BASE_URL=http://localhost:1234/v1
+LM_STUDIO_API_KEY=lm-studio
+LM_STUDIO_CHAT_MODEL=nvidia/nemotron-3-nano-4b
+LM_STUDIO_EMBEDDING_MODEL=text-embedding-nomic-embed-text-v2-moe
+LM_STUDIO_EMBEDDING_DIM=768
+```
+
+La configuracion recomendada para alternar sin cambiar dimensiones es usar 768
+en ambos lados: OpenAI `text-embedding-3-large` con `OPENAI_EMBEDDING_DIM=768`
+y LM Studio con `text-embedding-nomic-embed-text-v2-moe`. Si tu indice actual
+fue creado en 2000 dimensiones, reingesta una vez en un esquema limpio o
+recrea las tablas; despues podras cambiar entre OpenAI y local sin modificar
+la dimension.
+
+Evita modelos locales que devuelven mas de 2000 dimensiones en esta BD. Por
+ejemplo, `sfr-embedding-mistral` se basa en Mistral con `hidden_size=4096`, por
+lo que no es adecuado para un indice compartido de 768/2000 dimensiones.
 
 Variables de base de datos:
 
@@ -439,6 +465,17 @@ Variables RAG:
   del PDF usando LLM durante la ingesta.
 - `RAG_LLM_METADATA_MAX_CHARS`: maximo de texto del documento enviado al LLM para
   extraer metadata documental.
+
+Variables del proveedor IA:
+
+- `AI_PROVIDER`: `openai` o `lm_studio`.
+- `OPENAI_*`: endpoint, clave, modelos y parametros para OpenAI.
+- `LM_STUDIO_*`: endpoint, clave local ficticia, modelos y prefijos de embeddings
+  para LM Studio.
+- Los prefijos de embeddings son opcionales: si no los defines, el sistema usa
+  defaults para Nomic v2 MoE.
+- Desde la UI puedes cambiar proveedor, endpoint, modelo de chat, modelo de
+  embeddings, dimension y prefijos sin editar `.env`.
 
 ## Instalacion
 
@@ -518,7 +555,7 @@ La interfaz incluye:
 
 - configuracion de carpeta documental;
 - controles de chunking, retrieval y enriquecimiento de metadata con LLM;
-- prueba de conexion con OpenAI;
+- prueba de conexion con el proveedor IA activo;
 - filtros operativos y toggle para incluir documentos obsoletos;
 - filtros dinamicos basados en metadata indexada;
 - modos de consulta por caso operativo;
@@ -535,7 +572,7 @@ La interfaz incluye:
 ## Tests
 
 La suite cubre helpers de metadata, chunking, filtros SQL, prompt/contexto LLM y
-enriquecimiento de metadata sin hacer llamadas reales a OpenAI.
+enriquecimiento de metadata sin hacer llamadas reales al proveedor IA.
 
 Ejecutar:
 

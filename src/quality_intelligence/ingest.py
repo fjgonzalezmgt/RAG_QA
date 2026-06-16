@@ -1,8 +1,8 @@
 """PDF ingestion pipeline.
 
 The ingestor reads root-level PDFs from a configured folder, extracts text,
-splits it into chunks, embeds those chunks through OpenAI, and persists document
-metadata plus vectors in PostgreSQL/pgvector.
+splits it into chunks, embeds those chunks through the configured provider, and
+persists document metadata plus vectors in PostgreSQL/pgvector.
 """
 
 from __future__ import annotations

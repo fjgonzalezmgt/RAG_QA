@@ -1,4 +1,4 @@
-"""OpenAI embeddings client and batching helpers.
+"""OpenAI-compatible embeddings client and batching helpers.
 
 The ingestion pipeline embeds document chunks in batches. Query-time retrieval
 embeds a single user question. This module keeps batching, input normalization,
@@ -13,17 +13,17 @@ from urllib.parse import urlparse
 from loguru import logger
 from openai import OpenAI
 
-from .config import DEFAULT_OPENAI_BASE_URL, OpenAISettings
+from .config import OpenAISettings
 
 
 class EmbeddingClient:
-    """Client wrapper for OpenAI embeddings.
+    """Client wrapper for OpenAI-compatible embeddings.
 
     Parameters
     ----------
     settings
-        OpenAI settings containing API key, model, dimensions, and batching
-        limits.
+        Provider settings containing API key, model, dimensions, prefixes, and
+        batching limits.
     """
 
     def __init__(self, settings: OpenAISettings):
@@ -39,7 +39,7 @@ class EmbeddingClient:
         self.client = _build_client(settings)
 
     def embed_texts(self, texts: list[str], batch_size: int | None = None) -> list[list[float]]:
-        """Embed multiple texts using the OpenAI embeddings API.
+        """Embed multiple document texts using the configured embeddings API.
 
         Parameters
         ----------
@@ -55,10 +55,14 @@ class EmbeddingClient:
         """
 
         self._require_api_key()
-        clean_texts = [normalize_embedding_text(text) for text in texts]
+        clean_texts = [
+            format_embedding_input(text, prefix=self.settings.embedding_document_prefix)
+            for text in texts
+        ]
         effective_batch_size = batch_size or self.settings.embedding_batch_size
         logger.info(
-            "Creating embeddings. texts={}, batch_size={}, max_batch_chars={}, model='{}', dimensions={}.",
+            "Creating embeddings. provider='{}', texts={}, batch_size={}, max_batch_chars={}, model='{}', dimensions={}.",
+            self.settings.provider_label,
             len(clean_texts),
             effective_batch_size,
             self.settings.embedding_max_batch_chars,
@@ -79,7 +83,9 @@ class EmbeddingClient:
             logger.debug("Embedding batch {}. items={}, chars={}.", batch_index, len(batch), batch_chars)
             response = self.client.embeddings.create(**self._embedding_request(batch))
             ordered = sorted(response.data, key=lambda item: item.index)
-            embeddings.extend(item.embedding for item in ordered)
+            batch_embeddings = [item.embedding for item in ordered]
+            validate_embedding_dimensions(batch_embeddings, self.settings.embedding_dim)
+            embeddings.extend(batch_embeddings)
 
         logger.success("Embeddings created. vectors={}.", len(embeddings))
         return embeddings
@@ -99,7 +105,13 @@ class EmbeddingClient:
         """
 
         logger.info("Embedding query. chars={}.", len(text))
-        return self.embed_texts([text], batch_size=1)[0]
+        self._require_api_key()
+        clean_text = format_embedding_input(text, prefix=self.settings.embedding_query_prefix)
+        response = self.client.embeddings.create(**self._embedding_request([clean_text]))
+        ordered = sorted(response.data, key=lambda item: item.index)
+        embedding = ordered[0].embedding
+        validate_embedding_dimensions([embedding], self.settings.embedding_dim)
+        return embedding
 
     def _embedding_request(self, batch: list[str]) -> dict[str, object]:
         """Build an embeddings API request payload.
@@ -127,7 +139,7 @@ class EmbeddingClient:
         """Raise when no usable API key is configured."""
 
         if not self.settings.has_real_api_key:
-            raise RuntimeError("OPENAI_API_KEY is missing or still has a placeholder value.")
+            raise RuntimeError(f"{self.settings.provider_label} API key is missing or still has a placeholder value.")
 
 
 def _build_client(settings: OpenAISettings) -> OpenAI:
@@ -144,9 +156,9 @@ def _build_client(settings: OpenAISettings) -> OpenAI:
         Configured OpenAI SDK client.
     """
 
-    base_url = settings.base_url or DEFAULT_OPENAI_BASE_URL
+    base_url = settings.effective_base_url
     validate_base_url(base_url)
-    kwargs: dict[str, str] = {"api_key": settings.api_key, "base_url": base_url}
+    kwargs: dict[str, str] = {"api_key": settings.effective_api_key, "base_url": base_url}
     return OpenAI(**kwargs)
 
 
@@ -167,6 +179,33 @@ def normalize_embedding_text(text: str) -> str:
     return " ".join((text or "").split())
 
 
+def format_embedding_input(text: str, prefix: str = "") -> str:
+    """Normalize text and apply an optional embedding task prefix.
+
+    Parameters
+    ----------
+    text
+        Raw text to embed.
+    prefix
+        Provider/model-specific prefix, such as ``search_document: ``.
+
+    Returns
+    -------
+    str
+        Prompt-ready embedding input.
+    """
+
+    clean_text = normalize_embedding_text(text)
+    clean_prefix = prefix or ""
+    if clean_prefix and not clean_prefix[-1].isspace():
+        clean_prefix = f"{clean_prefix} "
+    if not clean_text or not clean_prefix:
+        return clean_text
+    if clean_text.lower().startswith(clean_prefix.lower()):
+        return clean_text
+    return f"{clean_prefix}{clean_text}"
+
+
 def supports_dimensions(model: str) -> bool:
     """Return whether an embedding model supports custom dimensions.
 
@@ -182,6 +221,19 @@ def supports_dimensions(model: str) -> bool:
     """
 
     return model.startswith("text-embedding-3")
+
+
+def validate_embedding_dimensions(embeddings: list[list[float]], expected_dim: int) -> None:
+    """Raise if any embedding vector does not match the configured dimension."""
+
+    for index, embedding in enumerate(embeddings):
+        actual_dim = len(embedding)
+        if actual_dim != expected_dim:
+            raise ValueError(
+                f"Embedding vector {index} has dimension {actual_dim}, "
+                f"but the configured pgvector dimension is {expected_dim}. "
+                "Use models with the same output dimension and reingest once if the schema dimension changes."
+            )
 
 
 def validate_base_url(base_url: str) -> None:
@@ -201,7 +253,7 @@ def validate_base_url(base_url: str) -> None:
     parsed = urlparse(base_url)
     if parsed.scheme not in {"http", "https"} or not parsed.netloc:
         raise ValueError(
-            "OPENAI_BASE_URL must start with http:// or https://. "
+            "The provider base URL must start with http:// or https://. "
             f"Current value is invalid: {base_url!r}"
         )
 
