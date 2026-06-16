@@ -215,9 +215,10 @@ def _metadata_filter(
         Selected or manually-entered filter value.
     """
 
-    clean_options = sorted({str(option).strip() for option in options if str(option).strip()} | ({default_value} if default_value else set()))
+    clean_options = sorted({str(option).strip() for option in options if str(option).strip()})
     choices = [""] + clean_options + ["Manual..."]
-    default_index = choices.index(default_value) if default_value in choices else 0
+    effective_default = default_value if default_value in clean_options else ""
+    default_index = choices.index(effective_default)
     selected = st.selectbox(
         label,
         choices,

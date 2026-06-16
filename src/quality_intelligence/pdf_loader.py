@@ -8,6 +8,7 @@ ingestion and citation.
 from __future__ import annotations
 
 import hashlib
+import sys
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
@@ -95,13 +96,17 @@ def load_pdf(path: Path, ocr_fallback: bool = False) -> PdfDocument:
     """
 
     logger.info("Loading PDF '{}'.", path)
-    reader = PdfReader(str(path))
-    metadata = reader.metadata or {}
+    metadata: dict[object, object] = {}
     pages: list[PageText] = []
+    pypdf_error: Exception | None = None
 
-    for index, page in enumerate(reader.pages, start=1):
-        text = page.extract_text() or ""
-        pages.append(PageText(page_number=index, text=text))
+    try:
+        reader = PdfReader(str(path))
+        metadata = _safe_reader_metadata(reader, path)
+        pages = _extract_pages_with_pypdf(reader, path)
+    except Exception as exc:
+        pypdf_error = exc
+        logger.warning("pypdf extraction failed for '{}': {}", path.name, exc)
 
     if ocr_fallback and not any(page.text.strip() for page in pages):
         ocr_text = extract_text_with_pdftotext(path)
@@ -109,6 +114,12 @@ def load_pdf(path: Path, ocr_fallback: bool = False) -> PdfDocument:
             ocr_text = extract_text_with_ocrmypdf(path)
         if ocr_text:
             pages = [PageText(page_number=index, text=text) for index, text in enumerate(split_pdftotext_pages(ocr_text), start=1)]
+
+    if pypdf_error and not pages:
+        raise RuntimeError(
+            "Could not extract PDF text with pypdf or configured fallbacks. "
+            f"Original pypdf error: {pypdf_error}"
+        ) from pypdf_error
 
     title = _clean_metadata_value(metadata.get("/Title")) if metadata else None
     author = _clean_metadata_value(metadata.get("/Author")) if metadata else None
@@ -127,6 +138,30 @@ def load_pdf(path: Path, ocr_fallback: bool = False) -> PdfDocument:
         document.title or "",
     )
     return document
+
+
+def _safe_reader_metadata(reader: PdfReader, path: Path) -> dict[object, object]:
+    """Read PDF metadata without failing the whole document load."""
+
+    try:
+        return dict(reader.metadata or {})
+    except Exception as exc:
+        logger.warning("PDF metadata skipped for '{}': {}", path.name, exc)
+        return {}
+
+
+def _extract_pages_with_pypdf(reader: PdfReader, path: Path) -> list[PageText]:
+    """Extract pages with pypdf, allowing individual page failures."""
+
+    pages: list[PageText] = []
+    for index, page in enumerate(reader.pages, start=1):
+        try:
+            text = page.extract_text() or ""
+        except Exception as exc:
+            logger.warning("pypdf text extraction failed for '{}', page {}: {}", path.name, index, exc)
+            text = ""
+        pages.append(PageText(page_number=index, text=text))
+    return pages
 
 
 def list_pdfs(pdf_dir: Path, recursive: bool = True) -> list[Path]:
@@ -170,10 +205,12 @@ def extract_text_with_pdftotext(path: Path) -> str:
 
     try:
         completed = subprocess.run(
-            ["pdftotext", "-layout", str(path), "-"],
+            [_pdftotext_command(), "-layout", str(path), "-"],
             check=False,
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             timeout=120,
         )
     except (OSError, subprocess.SubprocessError) as exc:
@@ -183,6 +220,20 @@ def extract_text_with_pdftotext(path: Path) -> str:
         logger.warning("pdftotext fallback failed for '{}': {}", path.name, completed.stderr.strip())
         return ""
     return completed.stdout or ""
+
+
+def _pdftotext_command() -> str:
+    """Return the best available pdftotext executable for the current environment."""
+
+    candidates = [
+        Path(sys.prefix) / "Library" / "bin" / "pdftotext.exe",
+        Path(sys.prefix) / "bin" / "pdftotext",
+        Path(sys.prefix) / "bin" / "pdftotext.exe",
+    ]
+    for candidate in candidates:
+        if candidate.exists():
+            return str(candidate)
+    return "pdftotext"
 
 
 def extract_text_with_ocrmypdf(path: Path) -> str:

@@ -533,7 +533,7 @@ def get_settings() -> Settings:
             chunk_overlap=_int_env("RAG_CHUNK_OVERLAP", 220),
             top_k=_int_env("RAG_TOP_K", 18),
             candidate_k=_int_env("RAG_CANDIDATE_K", 80),
-            max_chunks_per_document=_int_env("RAG_MAX_CHUNKS_PER_DOCUMENT", 2),
+            max_chunks_per_document=_int_env("RAG_MAX_CHUNKS_PER_DOCUMENT", 4),
             max_context_chars=_int_env("RAG_MAX_CONTEXT_CHARS", 50000),
             recursive_pdf_scan=_bool_env("RAG_RECURSIVE_PDF_SCAN", True),
             pdf_text_fallback=_bool_env("RAG_PDF_TEXT_FALLBACK", True),

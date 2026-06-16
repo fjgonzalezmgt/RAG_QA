@@ -40,6 +40,7 @@ def setup_logging(project_root: Path, level: str = "INFO") -> None:
             "<cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - "
             "<level>{message}</level>"
         ),
+        diagnose=False,
     )
     logger.add(
         log_dir / "quality_intelligence.log",
@@ -48,6 +49,7 @@ def setup_logging(project_root: Path, level: str = "INFO") -> None:
         retention="10 days",
         encoding="utf-8",
         format="{time:YYYY-MM-DD HH:mm:ss.SSS} | {level: <8} | {name}:{function}:{line} - {message}",
+        diagnose=False,
     )
 
     _CONFIGURED = True

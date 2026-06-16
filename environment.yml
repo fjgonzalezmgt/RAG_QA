@@ -8,5 +8,7 @@ dependencies:
   - psycopg>=3.1.18
   - python-dotenv>=1.0.1
   - pypdf>=4.2.0
+  - cryptography>=3.1
+  - poppler
   - streamlit>=1.36.0
   - pip
