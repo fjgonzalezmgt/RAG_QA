@@ -433,16 +433,11 @@ LM_STUDIO_EMBEDDING_MODEL=text-embedding-nomic-embed-text-v2-moe
 LM_STUDIO_EMBEDDING_DIM=768
 ```
 
-La configuracion recomendada para alternar sin cambiar dimensiones es usar 768
-en ambos lados: OpenAI `text-embedding-3-large` con `OPENAI_EMBEDDING_DIM=768`
-y LM Studio con `text-embedding-nomic-embed-text-v2-moe`. Si tu indice actual
-fue creado en 2000 dimensiones, reingesta una vez en un esquema limpio o
-recrea las tablas; despues podras cambiar entre OpenAI y local sin modificar
-la dimension.
-
-Evita modelos locales que devuelven mas de 2000 dimensiones en esta BD. Por
-ejemplo, `sfr-embedding-mistral` se basa en Mistral con `hidden_size=4096`, por
-lo que no es adecuado para un indice compartido de 768/2000 dimensiones.
+La configuracion recomendada mantiene compatibilidad entre OpenAI, modelos
+locales servidos por LM Studio y PostgreSQL + pgvector usando la misma dimension
+de embeddings en ambos proveedores. En este README se muestra una configuracion
+de referencia con 768 dimensiones para alternar entre OpenAI y LLM local sin
+modificar el indice vectorial.
 
 Variables de base de datos:
 
