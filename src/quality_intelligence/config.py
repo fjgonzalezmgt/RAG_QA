@@ -320,7 +320,7 @@ class OpenAISettings:
         """Return a user-facing provider label."""
 
         if self.is_local_provider:
-            return "LM Studio local"
+            return "Local"
         return "OpenAI"
 
     @property

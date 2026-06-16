@@ -85,14 +85,11 @@ def check_model_provider_connection(settings: OpenAISettings) -> OpenAIHealth:
         logger.success("{} connectivity OK.", settings.provider_label)
         return OpenAIHealth(
             ok=True,
-            message=(
-                f"Conectado a {settings.provider_label}. "
-                f"Chat: {settings.chat_model}. Embeddings: {settings.embedding_model}."
-            ),
+            message=f"Conectado a {settings.provider_label}.",
         )
     except Exception as exc:
         logger.exception("{} connectivity check failed.", settings.provider_label)
-        return OpenAIHealth(ok=False, message=f"No se pudo conectar a {settings.provider_label}: {exc}")
+        return OpenAIHealth(ok=False, message=f"No se pudo conectar a {settings.provider_label}.")
 
 
 def check_openai_connection(settings: OpenAISettings) -> OpenAIHealth:

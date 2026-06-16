@@ -19,8 +19,6 @@ ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT / "src"))
 
 from quality_intelligence.config import (
-    DEFAULT_LM_STUDIO_BASE_URL,
-    MAX_EMBEDDING_DIM,
     PROVIDER_LM_STUDIO,
     PROVIDER_OPENAI,
     get_settings,
@@ -86,7 +84,7 @@ DOCUMENT_TYPE_FILTER_VALUES = {
 
 AI_PROVIDER_LABELS = {
     PROVIDER_OPENAI: "OpenAI",
-    PROVIDER_LM_STUDIO: "LM Studio local",
+    PROVIDER_LM_STUDIO: "Local",
 }
 AI_PROVIDER_BY_LABEL = {label: provider for provider, label in AI_PROVIDER_LABELS.items()}
 
@@ -444,85 +442,10 @@ with st.sidebar:
         [AI_PROVIDER_LABELS[key] for key in provider_keys],
         index=provider_keys.index(current_provider) if current_provider in provider_keys else 0,
         horizontal=True,
-        help="Cambia entre OpenAI y un servidor local compatible con OpenAI, como LM Studio.",
+        help="Cambia entre OpenAI y el proveedor local configurado.",
     )
     selected_provider = AI_PROVIDER_BY_LABEL[provider_label]
-    provider_seed = provider_default_settings(base_settings.openai, selected_provider)
-
-    base_url = st.text_input(
-        "Endpoint API",
-        value=provider_seed.effective_base_url,
-        help=(
-            "URL base compatible con OpenAI. Para LM Studio normalmente es "
-            f"{DEFAULT_LM_STUDIO_BASE_URL}."
-        ),
-        key=f"provider_base_url_{selected_provider}",
-    )
-    api_key = st.text_input(
-        "API key",
-        value=provider_seed.effective_api_key,
-        type="password",
-        help="LM Studio acepta una clave local ficticia como `lm-studio`; OpenAI requiere una clave real.",
-        key=f"provider_api_key_{selected_provider}",
-    )
-    chat_model = st.text_input(
-        "Modelo operacional",
-        value=provider_seed.chat_model,
-        help="Modelo usado para responder en el chat y para metadata LLM.",
-        key=f"provider_chat_model_{selected_provider}",
-    )
-    embedding_model = st.text_input(
-        "Modelo de embeddings",
-        value=provider_seed.embedding_model,
-        help="Modelo usado para indexar documentos y buscar consultas.",
-        key=f"provider_embedding_model_{selected_provider}",
-    )
-    embedding_dim = st.number_input(
-        "Dimension embeddings",
-        min_value=1,
-        max_value=MAX_EMBEDDING_DIM,
-        value=min(provider_seed.embedding_dim, MAX_EMBEDDING_DIM),
-        step=1,
-        help=(
-            "Debe coincidir con la dimension guardada en pgvector. "
-            f"El limite operativo de esta BD es {MAX_EMBEDDING_DIM}."
-        ),
-        key=f"provider_embedding_dim_{selected_provider}",
-    )
-    temperature = st.slider(
-        "Temperatura",
-        min_value=0.0,
-        max_value=2.0,
-        value=float(provider_seed.temperature),
-        step=0.05,
-        help="Creatividad del modelo cuando el endpoint la soporta.",
-        key=f"provider_temperature_{selected_provider}",
-    )
-    with st.expander("Embeddings avanzados"):
-        embedding_document_prefix = st.text_input(
-            "Prefijo documentos",
-            value=provider_seed.embedding_document_prefix,
-            help="Prefijo aplicado a chunks antes de crear embeddings. Nomic v2 recomienda `search_document: `.",
-            key=f"provider_document_prefix_{selected_provider}",
-        )
-        embedding_query_prefix = st.text_input(
-            "Prefijo consultas",
-            value=provider_seed.embedding_query_prefix,
-            help="Prefijo aplicado a preguntas antes de buscar. Nomic v2 recomienda `search_query: `.",
-            key=f"provider_query_prefix_{selected_provider}",
-        )
-
-    ai_settings = replace(
-        provider_seed,
-        api_key=api_key.strip() or provider_seed.effective_api_key,
-        base_url=base_url.strip().rstrip("/") if base_url.strip() else None,
-        chat_model=chat_model.strip() or provider_seed.chat_model,
-        embedding_model=embedding_model.strip() or provider_seed.embedding_model,
-        embedding_dim=int(embedding_dim),
-        temperature=float(temperature),
-        embedding_document_prefix=embedding_document_prefix,
-        embedding_query_prefix=embedding_query_prefix,
-    )
+    ai_settings = provider_default_settings(base_settings.openai, selected_provider)
     health_signature = _provider_health_signature(ai_settings)
     if st.session_state.model_provider_health_signature != health_signature:
         st.session_state.model_provider_health = None
@@ -530,7 +453,7 @@ with st.sidebar:
 
     health = st.session_state.model_provider_health
     if health is None:
-        st.info(f"{ai_settings.provider_label}: conexion sin probar.")
+        st.info(f"{provider_label}: conexion sin probar.")
     elif health.ok:
         st.success(health.message)
     else:
