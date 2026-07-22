@@ -20,7 +20,15 @@ from loguru import logger
 from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 
-from .config import DatabaseSettings, MAX_EMBEDDING_DIM
+from .config import (
+    DEFAULT_LM_STUDIO_EMBEDDING_DIM,
+    DEFAULT_OPENAI_EMBEDDING_DIM,
+    MAX_EMBEDDING_DIM,
+    PROVIDER_LM_STUDIO,
+    PROVIDER_OPENAI,
+    DatabaseSettings,
+    normalize_ai_provider,
+)
 from .text_splitter import TextChunk
 
 
@@ -99,9 +107,17 @@ class VectorStore:
         PostgreSQL schema used for this domain's ``documents`` and ``chunks``.
     embedding_dim
         Expected vector dimension for stored embeddings.
+    embedding_provider
+        Provider whose embedding column is used for ingestion and retrieval.
     """
 
-    def __init__(self, db: DatabaseSettings, schema: str, embedding_dim: int):
+    def __init__(
+        self,
+        db: DatabaseSettings,
+        schema: str,
+        embedding_dim: int,
+        embedding_provider: str = PROVIDER_OPENAI,
+    ):
         """Initialize a vector store for one domain schema.
 
         Parameters
@@ -112,12 +128,18 @@ class VectorStore:
             Domain schema name.
         embedding_dim
             Expected vector dimension.
+        embedding_provider
+            Active embedding provider.
         """
 
         self.db = db
         self.schema = validate_identifier(schema)
         self.extensions_schema = validate_identifier(db.extensions_schema)
         self.embedding_dim = int(embedding_dim)
+        self.embedding_provider = normalize_ai_provider(embedding_provider)
+        self.embedding_column = (
+            "embedding_local" if self.embedding_provider == PROVIDER_LM_STUDIO else "embedding_openai"
+        )
         if self.embedding_dim <= 0:
             raise ValueError("embedding_dim must be positive")
         if self.embedding_dim > MAX_EMBEDDING_DIM:
@@ -150,8 +172,8 @@ class VectorStore:
         Notes
         -----
         The pgvector extension is installed in ``db.extensions_schema``. Domain
-        tables are created in ``self.schema``. If the embedding dimension
-        changed and tables are empty, they are recreated automatically.
+        tables are created in ``self.schema``. OpenAI and LM Studio use
+        independent vector columns so their embedding spaces never mix.
         """
 
         logger.info("Ensuring pgvector extension, schema '{}', and RAG tables.", self.schema)
@@ -285,7 +307,8 @@ class VectorStore:
                         page_end INTEGER,
                         content TEXT NOT NULL,
                         token_count INTEGER,
-                        embedding {vector_type}({self.embedding_dim}),
+                        embedding_openai {vector_type}({DEFAULT_OPENAI_EMBEDDING_DIM}),
+                        embedding_local {vector_type}({DEFAULT_LM_STUDIO_EMBEDDING_DIM}),
                         metadata JSONB NOT NULL DEFAULT '{{}}'::jsonb,
                         created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
                         section_title TEXT,
@@ -302,6 +325,15 @@ class VectorStore:
                 )
                 for column_sql in chunk_compatibility_columns():
                     cur.execute(f"ALTER TABLE {chunks} ADD COLUMN IF NOT EXISTS {column_sql}")
+                # Safe in-place migration from the former single-vector layout.
+                cur.execute(
+                    f"ALTER TABLE {chunks} ADD COLUMN IF NOT EXISTS embedding_openai "
+                    f"{vector_type}({DEFAULT_OPENAI_EMBEDDING_DIM})"
+                )
+                cur.execute(
+                    f"ALTER TABLE {chunks} ADD COLUMN IF NOT EXISTS embedding_local "
+                    f"{vector_type}({DEFAULT_LM_STUDIO_EMBEDDING_DIM})"
+                )
                 cur.execute(f"CREATE INDEX IF NOT EXISTS documents_domain_idx ON {documents} (domain)")
                 cur.execute(f"CREATE INDEX IF NOT EXISTS documents_current_idx ON {documents} (domain, is_current)")
                 cur.execute(f"CREATE INDEX IF NOT EXISTS documents_document_type_idx ON {documents} (document_type_code)")
@@ -418,6 +450,25 @@ class VectorStore:
         document_id = row["id"] if row else None
         logger.debug("Indexed document lookup result: {}.", "hit" if document_id else "miss")
         return document_id
+
+    def document_has_embeddings(self, document_id: str) -> bool:
+        """Return whether every chunk has the active provider's vector."""
+
+        chunks = qname(self.schema, "chunks")
+        embedding_column = qident(self.embedding_column)
+        with self.connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    f"""
+                    SELECT COUNT(*)::int AS total,
+                           COUNT({embedding_column})::int AS embedded
+                    FROM {chunks}
+                    WHERE document_id = %s
+                    """,
+                    (document_id,),
+                )
+                row = cur.fetchone()
+        return bool(row and row["total"] > 0 and row["total"] == row["embedded"])
 
     def delete_documents_by_source(self, domain: str, source_path: str) -> int:
         """Delete indexed rows for a source PDF.
@@ -679,6 +730,7 @@ class VectorStore:
 
         logger.info("Upserting {} chunks for document '{}'.", len(chunks), document_id)
         table = qname(self.schema, "chunks")
+        embedding_column = qident(self.embedding_column)
         vector_type = qname(self.extensions_schema, "vector")
         inserted = 0
         with self.connect() as conn:
@@ -690,7 +742,7 @@ class VectorStore:
                         INSERT INTO {table}
                             (
                                 id, document_id, domain, chunk_index, page_start, page_end,
-                                content, token_count, embedding, metadata, section_title,
+                                content, token_count, {embedding_column}, metadata, section_title,
                                 section_number, clause_ref, requirement_type, process_step,
                                 risk_signal, key_terms, detected_entities
                             )
@@ -699,7 +751,7 @@ class VectorStore:
                         DO UPDATE SET
                             content = EXCLUDED.content,
                             token_count = EXCLUDED.token_count,
-                            embedding = EXCLUDED.embedding,
+                            {embedding_column} = EXCLUDED.{embedding_column},
                             metadata = EXCLUDED.metadata,
                             section_title = EXCLUDED.section_title,
                             section_number = EXCLUDED.section_number,
@@ -772,10 +824,11 @@ class VectorStore:
             sorted((filters or {}).keys()),
         )
         chunks = qname(self.schema, "chunks")
+        embedding_column = qident(self.embedding_column)
         documents = qname(self.schema, "documents")
         vector_type = qname(self.extensions_schema, "vector")
         query_vector = vector_literal(query_embedding)
-        where_sql, where_params = build_filter_clause(domain, filters)
+        where_sql, where_params = build_filter_clause(domain, filters, self.embedding_column)
         document_metadata = document_metadata_json("d")
 
         with self.connect() as conn:
@@ -796,11 +849,11 @@ class VectorStore:
                         c.page_end,
                         c.content,
                         {document_metadata} || COALESCE(d.metadata, '{{}}'::jsonb) || COALESCE(c.metadata, '{{}}'::jsonb) AS metadata,
-                        1 - (c.embedding <=> %s::{vector_type}) AS score
+                        1 - (c.{embedding_column} <=> %s::{vector_type}) AS score
                     FROM {chunks} c
                     JOIN {documents} d ON d.id = c.document_id
                     WHERE {where_sql}
-                    ORDER BY c.embedding <=> %s::{vector_type}
+                    ORDER BY c.{embedding_column} <=> %s::{vector_type}
                     LIMIT %s
                     """,
                     (query_vector, *where_params, query_vector, top_k),
@@ -1202,12 +1255,11 @@ class VectorStore:
                 "Skipping approximate vector indexes because pgvector HNSW/IVFFLAT support up to 2000 dimensions; current dimension is {}.",
                 self.embedding_dim,
             )
-            logger.warning("Use an embedding dimension of 2000 or lower to keep approximate pgvector indexes.")
+            logger.warning("Use at most 2000 dimensions for either provider-specific vector column.")
             return
 
         logger.info("Ensuring HNSW vector index for schema '{}'.", self.schema)
         chunks = qname(self.schema, "chunks")
-        index_name = qident("chunks_embedding_hnsw_idx")
         try:
             with self.connect() as conn:
                 with conn.cursor() as cur:
@@ -1215,13 +1267,11 @@ class VectorStore:
                         "SELECT set_config('search_path', %s, true)",
                         (index_search_path(self.schema, self.extensions_schema),),
                     )
-                    cur.execute(
-                        f"""
-                        CREATE INDEX IF NOT EXISTS {index_name}
-                        ON {chunks}
-                        USING hnsw (embedding vector_cosine_ops)
-                        """
-                    )
+                    for column in ("embedding_openai", "embedding_local"):
+                        cur.execute(
+                            f"CREATE INDEX IF NOT EXISTS {qident(f'chunks_{column}_hnsw_idx')} "
+                            f"ON {chunks} USING hnsw ({qident(column)} vector_cosine_ops)"
+                        )
                 conn.commit()
             logger.success("HNSW vector index is ready for schema '{}'.", self.schema)
         except Exception:
@@ -1235,7 +1285,6 @@ class VectorStore:
 
         logger.info("Trying IVFFLAT vector index fallback for schema '{}'.", self.schema)
         chunks = qname(self.schema, "chunks")
-        index_name = qident("chunks_embedding_ivfflat_idx")
         try:
             with self.connect() as conn:
                 with conn.cursor() as cur:
@@ -1243,14 +1292,11 @@ class VectorStore:
                         "SELECT set_config('search_path', %s, true)",
                         (index_search_path(self.schema, self.extensions_schema),),
                     )
-                    cur.execute(
-                        f"""
-                        CREATE INDEX IF NOT EXISTS {index_name}
-                        ON {chunks}
-                        USING ivfflat (embedding vector_cosine_ops)
-                        WITH (lists = 100)
-                        """
-                    )
+                    for column in ("embedding_openai", "embedding_local"):
+                        cur.execute(
+                            f"CREATE INDEX IF NOT EXISTS {qident(f'chunks_{column}_ivfflat_idx')} "
+                            f"ON {chunks} USING ivfflat ({qident(column)} vector_cosine_ops) WITH (lists = 100)"
+                        )
                 conn.commit()
             logger.success("IVFFLAT vector index fallback is ready for schema '{}'.", self.schema)
         except Exception:
@@ -1290,8 +1336,10 @@ class VectorStore:
     def _ensure_embedding_dimension(self) -> None:
         """Validate the stored embedding column dimension against settings."""
 
-        chunks = qname(self.schema, "chunks")
-        documents = qname(self.schema, "documents")
+        expected_dimensions = {
+            "embedding_openai": DEFAULT_OPENAI_EMBEDDING_DIM,
+            "embedding_local": DEFAULT_LM_STUDIO_EMBEDDING_DIM,
+        }
 
         with self.connect() as conn:
             with conn.cursor() as cur:
@@ -1305,17 +1353,23 @@ class VectorStore:
                     JOIN pg_namespace n ON n.oid = c.relnamespace
                     WHERE n.nspname = %s
                       AND c.relname = 'chunks'
-                      AND a.attname = 'embedding'
+                      AND a.attname = %s
                       AND NOT a.attisdropped
                     """,
-                    (self.schema,),
+                    (self.schema, self.embedding_column),
                 )
                 row = cur.fetchone()
                 if not row:
                     return
 
                 current_dim = vector_dimension_from_metadata(row["vector_type"], row["type_modifier"])
-                if current_dim == self.embedding_dim:
+                expected_dim = expected_dimensions[self.embedding_column]
+                if self.embedding_dim != expected_dim:
+                    raise RuntimeError(
+                        f"El proveedor {self.embedding_provider!r} requiere vector({expected_dim}) en la estructura "
+                        f"multi-modelo, pero la configuracion solicita {self.embedding_dim}."
+                    )
+                if current_dim == expected_dim:
                     logger.debug("Embedding dimension matches table definition: {}.", self.embedding_dim)
                     return
 
@@ -1328,25 +1382,9 @@ class VectorStore:
                     )
                     return
 
-                cur.execute(f"SELECT COUNT(*)::int AS count FROM {chunks}")
-                chunk_count = cur.fetchone()["count"]
-
-                if chunk_count == 0:
-                    logger.warning(
-                        "Embedding dimension changed from {} to {} and table is empty; recreating RAG tables.",
-                        current_dim,
-                        self.embedding_dim,
-                    )
-                    cur.execute(f"DROP TABLE IF EXISTS {chunks} CASCADE")
-                    cur.execute(f"DROP TABLE IF EXISTS {documents} CASCADE")
-                    conn.commit()
-                    self._create_schema_tables()
-                    return
-
         raise RuntimeError(
-            f"El esquema '{self.schema}' tiene embeddings vector({current_dim}), "
-            f"pero la configuracion actual espera vector({self.embedding_dim}). "
-            "Crea un dominio/esquema nuevo o elimina y reingesta ese esquema para usar el modelo nuevo."
+            f"El esquema '{self.schema}' tiene {self.embedding_column} vector({current_dim}), "
+            f"pero la estructura multi-modelo requiere vector({expected_dimensions[self.embedding_column]})."
         )
 
 
@@ -1809,7 +1847,11 @@ def document_metadata_json(alias: str = "d") -> str:
     """
 
 
-def build_filter_clause(domain: str, filters: Mapping[str, object] | None = None) -> tuple[str, list[object]]:
+def build_filter_clause(
+    domain: str,
+    filters: Mapping[str, object] | None = None,
+    embedding_column: str = "embedding_openai",
+) -> tuple[str, list[object]]:
     """Build a SQL WHERE clause for quality/operations metadata filters.
 
     Parameters
@@ -1818,6 +1860,8 @@ def build_filter_clause(domain: str, filters: Mapping[str, object] | None = None
         Logical RAG domain.
     filters
         Optional operational metadata filters.
+    embedding_column
+        Provider-specific vector column that must contain an embedding.
 
     Returns
     -------
@@ -1825,7 +1869,7 @@ def build_filter_clause(domain: str, filters: Mapping[str, object] | None = None
         SQL predicate and ordered parameter values.
     """
 
-    clauses = ["c.domain = %s", "c.embedding IS NOT NULL"]
+    clauses = ["c.domain = %s", f"c.{qident(embedding_column)} IS NOT NULL"]
     params: list[object] = [domain]
     if normalize_filter_value((filters or {}).get("include_obsolete")).lower() not in {"1", "true", "yes", "si"}:
         clauses.append("COALESCE(d.is_current, TRUE) IS TRUE")

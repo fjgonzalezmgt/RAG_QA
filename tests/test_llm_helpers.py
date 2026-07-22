@@ -49,7 +49,7 @@ def test_format_metadata_omits_empty_values():
 
 
 def test_prefers_responses_api_for_reasoning_models():
-    assert prefers_responses_api("gpt-5.2")
+    assert prefers_responses_api("gpt-5.6-luna")
     assert prefers_responses_api("o3")
     assert not prefers_responses_api("gpt-4.1")
 

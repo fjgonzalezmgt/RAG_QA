@@ -143,7 +143,8 @@ CREATE TABLE IF NOT EXISTS chunks (
     page_end INTEGER,
     content TEXT NOT NULL,
     token_count INTEGER,
-    embedding extensions.vector(2000),
+    embedding_openai extensions.vector(2000),
+    embedding_local extensions.vector(768),
     metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     section_title TEXT,
@@ -165,6 +166,9 @@ ALTER TABLE chunks ADD COLUMN IF NOT EXISTS process_step TEXT;
 ALTER TABLE chunks ADD COLUMN IF NOT EXISTS risk_signal TEXT;
 ALTER TABLE chunks ADD COLUMN IF NOT EXISTS key_terms TEXT[];
 ALTER TABLE chunks ADD COLUMN IF NOT EXISTS detected_entities JSONB NOT NULL DEFAULT '{}'::jsonb;
+-- In-place migration from the former single-column embedding layout.
+ALTER TABLE chunks ADD COLUMN IF NOT EXISTS embedding_openai extensions.vector(2000);
+ALTER TABLE chunks ADD COLUMN IF NOT EXISTS embedding_local extensions.vector(768);
 
 CREATE TABLE IF NOT EXISTS quality_events (
     event_code TEXT PRIMARY KEY,
@@ -330,5 +334,7 @@ CREATE INDEX IF NOT EXISTS retrieval_sessions_created_at_idx ON retrieval_sessio
 -- during "Inicializar BD"; keep it here as an explicit deployment option once
 -- pgvector HNSW support is confirmed:
 --
--- CREATE INDEX IF NOT EXISTS chunks_embedding_hnsw_idx
---     ON chunks USING hnsw (embedding vector_cosine_ops);
+-- CREATE INDEX IF NOT EXISTS chunks_embedding_openai_hnsw_idx
+--     ON chunks USING hnsw (embedding_openai vector_cosine_ops);
+-- CREATE INDEX IF NOT EXISTS chunks_embedding_local_hnsw_idx
+--     ON chunks USING hnsw (embedding_local vector_cosine_ops);

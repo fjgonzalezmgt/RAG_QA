@@ -4,11 +4,15 @@ from quality_intelligence.config import (
     DEFAULT_LM_STUDIO_API_KEY,
     DEFAULT_LM_STUDIO_BASE_URL,
     DEFAULT_LM_STUDIO_EMBEDDING_DIM,
+    DEFAULT_OPENAI_EMBEDDING_DIM,
+    DatabaseSettings,
     PROVIDER_LM_STUDIO,
+    PROVIDER_OPENAI,
     get_settings,
     local_embedding_model_defaults,
     provider_default_settings,
 )
+from quality_intelligence.db import VectorStore
 from quality_intelligence.embeddings import format_embedding_input, supports_dimensions, validate_embedding_dimensions
 
 
@@ -21,6 +25,18 @@ def test_lm_studio_provider_defaults_do_not_require_real_api_key():
     assert settings.effective_api_key == DEFAULT_LM_STUDIO_API_KEY
     assert settings.effective_base_url == DEFAULT_LM_STUDIO_BASE_URL
     assert settings.embedding_dim == DEFAULT_LM_STUDIO_EMBEDDING_DIM
+
+
+def test_each_provider_uses_its_own_embedding_column_and_dimension():
+    db = DatabaseSettings(host="localhost", port=5432, name="test", user="test", password="test")
+
+    openai_store = VectorStore(db, "quality_intelligence", DEFAULT_OPENAI_EMBEDDING_DIM, PROVIDER_OPENAI)
+    local_store = VectorStore(db, "quality_intelligence", DEFAULT_LM_STUDIO_EMBEDDING_DIM, PROVIDER_LM_STUDIO)
+
+    assert DEFAULT_OPENAI_EMBEDDING_DIM == 2000
+    assert DEFAULT_LM_STUDIO_EMBEDDING_DIM == 768
+    assert openai_store.embedding_column == "embedding_openai"
+    assert local_store.embedding_column == "embedding_local"
 
 
 def test_local_embedding_model_omits_dimensions_parameter():

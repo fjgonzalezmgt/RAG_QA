@@ -561,7 +561,12 @@ with st.sidebar:
         value=False,
         help="Activalo solo para comparar versiones o investigar historial.",
     )
-    filter_option_store = VectorStore(base_settings.db, QUALITY_INTELLIGENCE_DOMAIN, ai_settings.embedding_dim)
+    filter_option_store = VectorStore(
+        base_settings.db,
+        QUALITY_INTELLIGENCE_DOMAIN,
+        ai_settings.embedding_dim,
+        ai_settings.provider,
+    )
     try:
         filter_options = filter_option_store.list_filter_options(
             domain=QUALITY_INTELLIGENCE_DOMAIN,
@@ -667,7 +672,12 @@ except ValueError:
     )
     st.stop()
 
-store = VectorStore(settings.db, settings.rag.domain, settings.openai.embedding_dim)
+store = VectorStore(
+    settings.db,
+    settings.rag.domain,
+    settings.openai.embedding_dim,
+    settings.openai.provider,
+)
 embedding_client = EmbeddingClient(settings.openai)
 retriever = RAGRetriever(store, embedding_client)
 llm_client = LLMClient(settings.openai)

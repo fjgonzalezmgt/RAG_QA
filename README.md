@@ -327,7 +327,8 @@ erDiagram
         int page_start
         int page_end
         text content
-        vector embedding
+        vector embedding_openai "dim = 2000"
+        vector embedding_local "dim = 768"
         jsonb metadata
     }
     QUALITY_EVENTS {
@@ -415,9 +416,9 @@ Valores principales:
 DB_NAME=RAG_DB
 RAG_DOMAIN=quality_intelligence
 RAG_PDF_DIR=./quality_knowledge_base
-OPENAI_CHAT_MODEL=gpt-5.2
+OPENAI_CHAT_MODEL=gpt-5.6-luna
 OPENAI_EMBEDDING_MODEL=text-embedding-3-large
-OPENAI_EMBEDDING_DIM=768
+OPENAI_EMBEDDING_DIM=2000
 AI_PROVIDER=openai
 ```
 
@@ -433,11 +434,12 @@ LM_STUDIO_EMBEDDING_MODEL=text-embedding-nomic-embed-text-v2-moe
 LM_STUDIO_EMBEDDING_DIM=768
 ```
 
-La configuracion recomendada mantiene compatibilidad entre OpenAI, modelos
-locales servidos por LM Studio y PostgreSQL + pgvector usando la misma dimension
-de embeddings en ambos proveedores. En este README se muestra una configuracion
-de referencia con 768 dimensiones para alternar entre OpenAI y LLM local sin
-modificar el indice vectorial.
+Los chunks conservan dos espacios vectoriales independientes:
+`embedding_openai vector(2000)` para OpenAI y `embedding_local vector(768)` para
+LM Studio/Nomic. Cambiar de proveedor no mezcla vectores ni elimina el indice
+del otro proveedor. Ejecuta la ingesta una vez con cada proveedor para completar
+ambas columnas; las ejecuciones posteriores omiten los documentos que ya tienen
+el conjunto de vectores activo.
 
 Variables de base de datos:
 

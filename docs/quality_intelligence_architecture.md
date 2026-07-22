@@ -84,7 +84,8 @@ Tablas documentales centrales:
 
 - `documents`: documento fuente, hash, path, tipo, revision, estado, fechas,
   owner, planta, proceso, producto, cliente, QMS process, riesgo y metadata.
-- `chunks`: fragmentos con pagina, texto, embedding, seccion, clausula,
+- `chunks`: fragmentos con pagina, texto, embeddings independientes para
+  OpenAI y LM Studio, seccion, clausula,
   requisito, paso de proceso, senal de riesgo y metadata.
 
 Dimensiones operativas:
@@ -149,7 +150,8 @@ erDiagram
         int page_start
         int page_end
         text content
-        vector embedding
+        vector embedding_openai "dim = 2000"
+        vector embedding_local "dim = 768"
         jsonb metadata
     }
 
@@ -556,7 +558,9 @@ Tecnicos:
 - PDFs escaneados requieren OCR; texto pobre genera chunks pobres.
 - Embeddings no garantizan cumplimiento legal o tecnico.
 - Vector search puede traer documentos semanticamente parecidos pero no aplicables.
-- Cambios de dimension de embeddings obligan a reindexar.
+- Cada proveedor debe conservar la dimension definida por su columna
+  (`embedding_openai` 2000 y `embedding_local` 768); cambiar de modelo dentro
+  de un mismo espacio vectorial exige reingestar esa columna.
 
 Operativos:
 

@@ -24,11 +24,16 @@ PROVIDER_LM_STUDIO = "lm_studio"
 SUPPORTED_AI_PROVIDERS = {PROVIDER_OPENAI, PROVIDER_LM_STUDIO}
 MAX_EMBEDDING_DIM = 2000
 DEFAULT_OPENAI_BASE_URL = "https://api.openai.com/v1"
+DEFAULT_OPENAI_CHAT_MODEL = "gpt-5.6-luna"
 DEFAULT_LM_STUDIO_BASE_URL = "http://localhost:1234/v1"
 DEFAULT_LM_STUDIO_API_KEY = "lm-studio"
 DEFAULT_LM_STUDIO_CHAT_MODEL = "nvidia/nemotron-3-nano-4b"
 DEFAULT_LM_STUDIO_EMBEDDING_MODEL = "text-embedding-nomic-embed-text-v2-moe"
 DEFAULT_LM_STUDIO_EMBEDDING_DIM = 768
+# PostgreSQL/pgvector in this deployment accepts at most 2000 dimensions.
+# text-embedding-3-large supports shortening through the dimensions argument,
+# while Nomic v2 should remain at its native 768 dimensions.
+DEFAULT_OPENAI_EMBEDDING_DIM = MAX_EMBEDDING_DIM
 DEFAULT_LM_STUDIO_DOCUMENT_PREFIX = "search_document: "
 DEFAULT_LM_STUDIO_QUERY_PREFIX = "search_query: "
 
@@ -458,9 +463,9 @@ def provider_default_settings(settings: OpenAISettings, provider: str) -> OpenAI
         provider=PROVIDER_OPENAI,
         api_key=os.getenv("OPENAI_API_KEY", ""),
         base_url=_optional_url_env("OPENAI_BASE_URL"),
-        chat_model=os.getenv("OPENAI_CHAT_MODEL", "gpt-5.2"),
+        chat_model=os.getenv("OPENAI_CHAT_MODEL", DEFAULT_OPENAI_CHAT_MODEL),
         embedding_model=os.getenv("OPENAI_EMBEDDING_MODEL", "text-embedding-3-large"),
-        embedding_dim=_int_env("OPENAI_EMBEDDING_DIM", 2000),
+        embedding_dim=_int_env("OPENAI_EMBEDDING_DIM", DEFAULT_OPENAI_EMBEDDING_DIM),
         embedding_document_prefix=os.getenv("OPENAI_EMBEDDING_DOCUMENT_PREFIX", ""),
         embedding_query_prefix=os.getenv("OPENAI_EMBEDDING_QUERY_PREFIX", ""),
     )
@@ -495,9 +500,9 @@ def get_settings() -> Settings:
     else:
         base_url = _optional_url_env("OPENAI_BASE_URL")
         api_key = os.getenv("OPENAI_API_KEY", "")
-        chat_model = os.getenv("OPENAI_CHAT_MODEL", "gpt-5.2")
+        chat_model = os.getenv("OPENAI_CHAT_MODEL", DEFAULT_OPENAI_CHAT_MODEL)
         embedding_model = os.getenv("OPENAI_EMBEDDING_MODEL", "text-embedding-3-large")
-        embedding_dim = _int_env("OPENAI_EMBEDDING_DIM", 2000)
+        embedding_dim = _int_env("OPENAI_EMBEDDING_DIM", DEFAULT_OPENAI_EMBEDDING_DIM)
         embedding_document_prefix = os.getenv("OPENAI_EMBEDDING_DOCUMENT_PREFIX", "")
         embedding_query_prefix = os.getenv("OPENAI_EMBEDDING_QUERY_PREFIX", "")
 

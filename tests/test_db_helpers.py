@@ -61,9 +61,14 @@ def test_build_filter_clause_excludes_obsolete_by_default():
 
 
 def test_build_filter_clause_can_include_obsolete():
-    where_sql, _ = build_filter_clause("quality_intelligence", {"include_obsolete": "true"})
+    where_sql, _ = build_filter_clause(
+        "quality_intelligence",
+        {"include_obsolete": "true"},
+        "embedding_local",
+    )
 
     assert "COALESCE(d.is_current, TRUE) IS TRUE" not in where_sql
+    assert 'c."embedding_local" IS NOT NULL' in where_sql
 
 
 def test_document_metadata_json_is_sql_expression_not_function_call():

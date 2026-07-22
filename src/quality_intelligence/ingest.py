@@ -92,6 +92,7 @@ class PDFIngestor:
             self.settings.db,
             self.settings.rag.domain,
             self.settings.openai.embedding_dim,
+            self.settings.openai.provider,
         )
         self.embeddings = embeddings or EmbeddingClient(self.settings.openai)
 
@@ -133,7 +134,12 @@ class PDFIngestor:
         store = self.store
         if store.schema != target_schema:
             logger.info("Switching vector store schema from '{}' to '{}'.", store.schema, target_schema)
-            store = VectorStore(self.settings.db, target_schema, self.settings.openai.embedding_dim)
+            store = VectorStore(
+                self.settings.db,
+                target_schema,
+                self.settings.openai.embedding_dim,
+                self.settings.openai.provider,
+            )
         result = IngestResult(pdf_dir=target_dir, domain=target_domain)
 
         store.ensure_schema()
@@ -158,12 +164,19 @@ class PDFIngestor:
                         source_path,
                         document.content_hash,
                     )
-                    if existing_id:
+                    if existing_id and store.document_has_embeddings(existing_id):
                         result.documents_skipped += 1
                         logger.info("Skipping already indexed PDF '{}'. document_id='{}'.", pdf_path.name, existing_id)
                         _notify(progress, f"Skipping {pdf_path.name}; already indexed")
                         continue
-                    superseded_id = store.mark_source_superseded(target_domain, source_path)
+                    if existing_id:
+                        logger.info(
+                            "PDF '{}' already has chunks but lacks {} vectors; generating only the missing vector set.",
+                            pdf_path.name,
+                            store.embedding_column,
+                        )
+                    else:
+                        superseded_id = store.mark_source_superseded(target_domain, source_path)
 
                 chunks = split_pages(
                     document.pages,
